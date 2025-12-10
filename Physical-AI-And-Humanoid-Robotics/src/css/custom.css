@@ -1,0 +1,179 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* Import interactive components CSS */
+@import url('./interactive-components.css');
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #00cc66; /* Green accent - represents growth and innovation */
+  --ifm-color-primary-dark: #00994d;
+  --ifm-color-primary-darker: #007a3d;
+  --ifm-color-primary-darkest: #005c2e;
+  --ifm-color-primary-light: #33d685;
+  --ifm-color-primary-lighter: #66e0a3;
+  --ifm-color-primary-lightest: #99ebc2;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 204, 102, 0.1);
+
+  /* Additional theme colors for Physical AI textbook */
+  --ifm-color-secondary: #607d8b; /* Material blue-gray - for secondary elements */
+  --ifm-color-success: #4caf50;   /* Green - for success/positive elements */
+  --ifm-color-info: #03a9f4;      /* Light blue - for info/neutral elements */
+  --ifm-color-warning: #ff9800;   /* Orange - for warnings */
+  --ifm-color-danger: #f44336;    /* Red - for errors/danger */
+
+  /* Background and text colors - adjusted for better readability */
+  --ifm-background-color: #f8f9fa; /* Slightly off-white background */
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #212529; /* Darker text for better contrast */
+  --ifm-font-color-base-inverse: #ffffff;
+
+  /* Border colors */
+  --ifm-border-color: #dee2e6;
+  --ifm-global-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #4285f4; /* Lighter blue for dark mode */
+  --ifm-color-primary-dark: #3367d6;
+  --ifm-color-primary-darker: #2d5db1;
+  --ifm-color-primary-darkest: #244a8a;
+  --ifm-color-primary-light: #669df6;
+  --ifm-color-primary-lighter: #8ab4f8;
+  --ifm-color-primary-lightest: #aecbfa;
+  --docusaurus-highlighted-code-line-bg: rgba(66, 133, 244, 0.2);
+
+  /* Dark mode specific colors */
+  --ifm-background-color: #121212;
+  --ifm-background-surface-color: #1e1e1e;
+  --ifm-font-color-base: #e4e5e6;
+  --ifm-font-color-base-inverse: #000000;
+
+  /* Dark mode border colors */
+  --ifm-border-color: #3a3a3a;
+  --ifm-global-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Custom styles for Physical AI & Humanoid Robotics textbook */
+.textbook-module-card {
+  border: 1px solid var(--ifm-border-color);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: box-shadow 0.3s ease;
+}
+
+.textbook-module-card:hover {
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.15);
+}
+
+.textbook-lesson-header {
+  border-bottom: 2px solid var(--ifm-color-primary);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.textbook-learning-objectives {
+  background-color: var(--ifm-background-surface-color);
+  border-left: 4px solid var(--ifm-color-primary);
+  padding: 1rem;
+  margin: 1.5rem 0;
+}
+
+.textbook-key-concept {
+  background-color: rgba(26, 115, 232, 0.05);
+  border: 1px solid rgba(26, 115, 232, 0.2);
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.textbook-code-block {
+  background-color: #f6f8fa;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+[data-theme='dark'] .textbook-code-block {
+  background-color: #1a1a1a;
+}
+
+.textbook-diagram-container {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 1rem;
+  background-color: var(--ifm-background-surface-color);
+  border-radius: 8px;
+}
+
+.textbook-exercise-box {
+  border: 1px solid var(--ifm-color-warning);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  background-color: rgba(255, 152, 0, 0.05);
+}
+
+.textbook-reference-box {
+  border: 1px solid var(--ifm-color-info);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  background-color: rgba(3, 169, 244, 0.05);
+}
+
+/* Sidebar customization for textbook */
+.menu__list-item-collapsible .menu__link--sublist {
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+}
+
+/* Accordion arrows for collapsible sidebar items */
+.menu__list-item-collapsible .menu__caret {
+  position: relative;
+}
+
+.menu__list-item-collapsible .menu__caret::after {
+  content: '▶';
+  position: absolute;
+  right: 12px;
+  transition: transform 0.2s ease;
+  font-size: 0.8rem;
+}
+
+.menu__list-item-collapsible--active .menu__caret::after {
+  transform: rotate(90deg);
+}
+
+/* Navigation customization */
+.navbar__item {
+  font-weight: 500;
+}
+
+/* Ensure links are visible */
+.navbar__link,
+.menu__link {
+  color: var(--ifm-font-color-base);
+}
+
+.navbar__link:hover,
+.menu__link:hover {
+  color: var(--ifm-color-primary);
+}
+
+/* Module headings should use green accent */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--ifm-color-primary);
+}
+
+/* Footer customization */
+.footer {
+  background-color: var(--ifm-background-surface-color);
+  border-top: 1px solid var(--ifm-border-color);
+}
