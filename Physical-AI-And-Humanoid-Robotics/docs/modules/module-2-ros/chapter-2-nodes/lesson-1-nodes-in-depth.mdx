@@ -1,0 +1,721 @@
+---
+sidebar_position: 1
+---
+
+# Nodes in Depth: The Building Blocks of ROS 2 Systems
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Create and manage ROS 2 nodes in both Python and C++
+- Understand the lifecycle and execution model of ROS 2 nodes
+- Implement proper error handling and resource management in nodes
+- Design node architectures for Physical AI applications
+- Use node parameters for configuration and tuning
+
+## Understanding ROS 2 Nodes
+
+### What is a Node?
+
+A node in ROS 2 is an executable process that performs computation. Nodes are the fundamental building blocks of any ROS 2 system, and they provide the following capabilities:
+
+- **Computation**: Execute algorithms and business logic
+- **Communication**: Publish/subscribe to topics, provide/use services
+- **Parameter Management**: Store and retrieve configuration values
+- **Logging**: Record system behavior and debugging information
+
+### Node Characteristics
+
+#### Process Isolation
+Each node runs as a separate process, providing:
+- **Fault Tolerance**: Failure of one node doesn't crash others
+- **Security**: Memory protection between components
+- **Resource Management**: Independent resource allocation
+
+#### Single-Threaded Execution Model
+By default, nodes execute in a single thread:
+- **Simplicity**: Easier to reason about program state
+- **Safety**: No race conditions in single-threaded code
+- **Limitation**: Blocking operations can stall the entire node
+
+## Creating Nodes in Python
+
+### Basic Node Structure
+
+```python
+import rclpy
+from rclpy.node import Node
+
+class MyNode(Node):
+    def __init__(self):
+        # Initialize the node with a name
+        super().__init__('my_node_name')
+
+        # Node initialization code goes here
+        self.get_logger().info('Node initialized successfully')
+
+def main(args=None):
+    # Initialize ROS 2
+    rclpy.init(args=args)
+
+    # Create node instance
+    my_node = MyNode()
+
+    try:
+        # Spin the node to process callbacks
+        rclpy.spin(my_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Cleanup
+        my_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Node with Publishers and Subscribers
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class TalkerListenerNode(Node):
+    def __init__(self):
+        super().__init__('talker_listener')
+
+        # Create publisher
+        self.publisher = self.create_publisher(String, 'chatter', 10)
+
+        # Create subscriber
+        self.subscription = self.create_subscription(
+            String,
+            'listen',
+            self.listener_callback,
+            10
+        )
+
+        # Create timer for publishing
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+
+        self.i = 0
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = f'Hello World: {self.i}'
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
+        self.i += 1
+
+    def listener_callback(self, msg):
+        self.get_logger().info(f'I heard: "{msg.data}"')
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = TalkerListenerNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Creating Nodes in C++
+
+### Basic Node Structure
+
+```cpp
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+
+using std::placeholders::_1;
+
+class MinimalNode : public rclcpp::Node
+{
+public:
+    MinimalNode() : Node("minimal_node")
+    {
+        RCLCPP_INFO(this->get_logger(), "Node initialized successfully");
+    }
+};
+
+int main(int argc, char * argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<MinimalNode>());
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+### Node with Publishers and Subscribers
+
+```cpp
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+
+using namespace std::chrono_literals;
+
+class TalkerListener : public rclcpp::Node
+{
+public:
+    TalkerListener() : Node("talker_listener")
+    {
+        // Create publisher
+        publisher_ = this->create_publisher<std_msgs::msg::String>("chatter", 10);
+
+        // Create subscription
+        subscription_ = this->create_subscription<std_msgs::msg::String>(
+            "listen", 10,
+            [this](const std_msgs::msg::String::SharedPtr msg) {
+                RCLCPP_INFO(this->get_logger(), "I heard: '%s'", msg->data.c_str());
+            });
+
+        // Create timer
+        timer_ = this->create_wall_timer(
+            500ms, std::bind(&TalkerListener::timer_callback, this));
+    }
+
+private:
+    void timer_callback()
+    {
+        auto message = std_msgs::msg::String();
+        message.data = "Hello World: " + std::to_string(count_++);
+        RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message.data.c_str());
+        publisher_->publish(message);
+    }
+
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription_;
+    size_t count_ = 0;
+};
+
+int main(int argc, char * argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<TalkerListener>());
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+## Node Parameters
+
+### Parameter Basics
+
+Parameters allow nodes to be configured without recompilation:
+
+```python
+import rclpy
+from rclpy.node import Node
+
+class ParameterNode(Node):
+    def __init__(self):
+        super().__init__('parameter_node')
+
+        # Declare parameters with default values
+        self.declare_parameter('frequency', 1.0)
+        self.declare_parameter('topic_name', 'default_topic')
+        self.declare_parameter('robot_name', 'robot1')
+
+        # Get parameter values
+        self.frequency = self.get_parameter('frequency').value
+        self.topic_name = self.get_parameter('topic_name').value
+        self.robot_name = self.get_parameter('robot_name').value
+
+        self.get_logger().info(f'Frequency: {self.frequency}')
+        self.get_logger().info(f'Topic: {self.topic_name}')
+        self.get_logger().info(f'Robot: {self.robot_name}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ParameterNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Parameter Callbacks
+
+```python
+import rclpy
+from rclpy.node import Node
+from rclpy.parameter import Parameter
+
+class ParameterCallbackNode(Node):
+    def __init__(self):
+        super().__init__('parameter_callback_node')
+
+        # Declare parameters
+        self.declare_parameter('max_velocity', 1.0)
+        self.declare_parameter('control_mode', 'position')
+
+        # Set up parameter callback
+        self.add_on_set_parameters_callback(self.parameter_callback)
+
+        self.max_velocity = self.get_parameter('max_velocity').value
+        self.control_mode = self.get_parameter('control_mode').value
+
+    def parameter_callback(self, params):
+        for param in params:
+            if param.name == 'max_velocity' and param.type_ == Parameter.Type.DOUBLE:
+                self.max_velocity = param.value
+                self.get_logger().info(f'Updated max_velocity to {self.max_velocity}')
+            elif param.name == 'control_mode' and param.type_ == Parameter.Type.STRING:
+                self.control_mode = param.value
+                self.get_logger().info(f'Updated control_mode to {self.control_mode}')
+
+        return SetParametersResult(successful=True)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ParameterCallbackNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Node Execution Models
+
+### Single-Threaded Executor
+
+The default executor runs all nodes in a single thread:
+
+```python
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import SingleThreadedExecutor
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    node1 = MyNode('node1')
+    node2 = MyNode('node2')
+
+    executor = SingleThreadedExecutor()
+    executor.add_node(node1)
+    executor.add_node(node2)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node1.destroy_node()
+        node2.destroy_node()
+        executor.shutdown()
+        rclpy.shutdown()
+```
+
+### Multi-Threaded Executor
+
+For better performance with multiple nodes:
+
+```python
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    node1 = MyNode('node1')
+    node2 = MyNode('node2')
+
+    executor = MultiThreadedExecutor()
+    executor.add_node(node1)
+    executor.add_node(node2)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node1.destroy_node()
+        node2.destroy_node()
+        executor.shutdown()
+        rclpy.shutdown()
+```
+
+## Lifecycle Nodes
+
+For complex systems requiring initialization, activation, and shutdown phases:
+
+```python
+import rclpy
+from rclpy.lifecycle import LifecycleNode, LifecycleState
+from rclpy.lifecycle import TransitionCallbackReturn
+from rclpy.executors import SingleThreadedExecutor
+
+class LifecycleTalker(LifecycleNode):
+    def __init__(self):
+        super().__init__('lifecycle_talker')
+        self.publisher = None
+        self.timer = None
+
+    def on_configure(self, state):
+        self.get_logger().info(f'Configuring node: {state}')
+        self.publisher = self.create_publisher(String, 'lifecycle_chatter', 10)
+        self.timer = self.create_timer(1.0, self.timer_callback)
+        self.timer.cancel()
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_activate(self, state):
+        self.get_logger().info(f'Activating node: {state}')
+        self.publisher.on_activate()
+        self.timer.reset()
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_deactivate(self, state):
+        self.get_logger().info(f'Deactivating node: {state}')
+        self.timer.cancel()
+        self.publisher.on_deactivate()
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_cleanup(self, state):
+        self.get_logger().info(f'Cleaning up node: {state}')
+        self.destroy_publisher(self.publisher)
+        self.destroy_timer(self.timer)
+        self.publisher = None
+        self.timer = None
+        return TransitionCallbackReturn.SUCCESS
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = 'Lifecycle message'
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = LifecycleTalker()
+
+    # Use lifecycle node executor
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        executor.shutdown()
+        rclpy.shutdown()
+```
+
+## Error Handling and Resource Management
+
+### Proper Node Cleanup
+
+```python
+import rclpy
+from rclpy.node import Node
+import threading
+import time
+
+class RobustNode(Node):
+    def __init__(self):
+        super().__init__('robust_node')
+
+        # Initialize resources
+        self.publisher = self.create_publisher(String, 'robust_chatter', 10)
+        self.subscription = self.create_subscription(
+            String, 'robust_listen', self.listener_callback, 10)
+
+        # Start background threads if needed
+        self.background_thread = threading.Thread(target=self.background_work)
+        self.background_thread.start()
+
+        self.running = True
+        self.get_logger().info('Robust node initialized')
+
+    def listener_callback(self, msg):
+        self.get_logger().info(f'Heard: {msg.data}')
+
+    def background_work(self):
+        while self.running:
+            # Do background work
+            time.sleep(0.1)
+
+    def destroy_node(self):
+        # Stop background threads
+        self.running = False
+        if self.background_thread.is_alive():
+            self.background_thread.join(timeout=1.0)
+
+        # Clean up resources
+        self.get_logger().info('Node destroyed successfully')
+        return super().destroy_node()
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RobustNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('Interrupted by user')
+    except Exception as e:
+        node.get_logger().error(f'Error occurred: {e}')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Node Design Patterns for Physical AI
+
+### Sensor Fusion Node
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan, Image, Imu
+from geometry_msgs.msg import PoseStamped
+import numpy as np
+
+class SensorFusionNode(Node):
+    def __init__(self):
+        super().__init__('sensor_fusion')
+
+        # Subscribe to multiple sensor topics
+        self.lidar_sub = self.create_subscription(
+            LaserScan, 'scan', self.lidar_callback, 10)
+        self.camera_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.camera_callback, 10)
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, 10)
+
+        # Publish fused data
+        self.pose_pub = self.create_publisher(PoseStamped, 'fused_pose', 10)
+
+        # Initialize sensor data storage
+        self.lidar_data = None
+        self.camera_data = None
+        self.imu_data = None
+
+        # Fusion parameters
+        self.declare_parameter('fusion_rate', 10.0)
+        self.fusion_rate = self.get_parameter('fusion_rate').value
+
+        # Create fusion timer
+        self.fusion_timer = self.create_timer(
+            1.0/self.fusion_rate, self.fusion_callback)
+
+    def lidar_callback(self, msg):
+        self.lidar_data = msg
+        self.get_logger().debug('Lidar data received')
+
+    def camera_callback(self, msg):
+        self.camera_data = msg
+        self.get_logger().debug('Camera data received')
+
+    def imu_callback(self, msg):
+        self.imu_data = msg
+        self.get_logger().debug('IMU data received')
+
+    def fusion_callback(self):
+        if self.lidar_data and self.camera_data and self.imu_data:
+            # Perform sensor fusion
+            fused_pose = self.perform_fusion()
+            self.pose_pub.publish(fused_pose)
+            self.get_logger().info('Fused pose published')
+
+    def perform_fusion(self):
+        # Implement sensor fusion algorithm
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+        pose_msg.header.frame_id = 'fused_frame'
+        # Perform actual fusion logic here
+        return pose_msg
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SensorFusionNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Control Node Pattern
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist, Pose
+from nav_msgs.msg import Odometry
+from std_msgs.msg import Float64MultiArray
+
+class ControlNode(Node):
+    def __init__(self):
+        super().__init__('control_node')
+
+        # Subscriptions
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+        self.goal_sub = self.create_subscription(
+            Pose, 'goal', self.goal_callback, 10)
+
+        # Publishers
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Control parameters
+        self.declare_parameter('kp_linear', 1.0)
+        self.declare_parameter('kp_angular', 2.0)
+        self.kp_linear = self.get_parameter('kp_linear').value
+        self.kp_angular = self.get_parameter('kp_angular').value
+
+        # State variables
+        self.current_pose = None
+        self.goal_pose = None
+        self.control_timer = self.create_timer(0.05, self.control_loop)  # 20 Hz
+
+    def odom_callback(self, msg):
+        self.current_pose = msg.pose.pose
+
+    def goal_callback(self, msg):
+        self.goal_pose = msg
+
+    def control_loop(self):
+        if self.current_pose and self.goal_pose:
+            cmd = self.compute_control_command()
+            self.cmd_pub.publish(cmd)
+
+    def compute_control_command(self):
+        # Simple proportional controller
+        cmd = Twist()
+
+        # Calculate errors
+        dx = self.goal_pose.position.x - self.current_pose.position.x
+        dy = self.goal_pose.position.y - self.current_pose.position.y
+        distance = (dx**2 + dy**2)**0.5
+
+        # Linear velocity
+        cmd.linear.x = min(self.kp_linear * distance, 1.0)
+
+        # Angular velocity
+        desired_yaw = math.atan2(dy, dx)
+        current_yaw = self.get_yaw_from_quaternion(self.current_pose.orientation)
+        yaw_error = desired_yaw - current_yaw
+        cmd.angular.z = self.kp_angular * yaw_error
+
+        return cmd
+
+    def get_yaw_from_quaternion(self, q):
+        # Convert quaternion to yaw angle
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ControlNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Best Practices for Node Development
+
+### 1. Resource Management
+- Always clean up resources in `destroy_node()`
+- Use context managers when appropriate
+- Monitor memory and CPU usage
+
+### 2. Error Handling
+- Implement try-catch blocks for critical operations
+- Log errors appropriately
+- Implement graceful degradation
+
+### 3. Performance
+- Use appropriate QoS settings
+- Optimize message sizes
+- Consider computational complexity
+
+### 4. Testing
+- Write unit tests for node logic
+- Use ROS 2 testing tools
+- Test with realistic message rates
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Nodes are the fundamental building blocks of ROS 2 systems. Proper node design is crucial for creating robust, maintainable, and efficient robotic applications. Understanding the execution model, parameter management, and lifecycle management is essential for developing complex Physical AI systems.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Create a simple node that publishes sensor data at a configurable rate
+2. Implement a node that subscribes to multiple topics and performs a simple computation
+3. Add parameters to control the behavior of your nodes
+4. Experiment with different executors to understand their performance characteristics
+
+</div>
+
+## Chapter Summary
+
+Nodes form the foundation of any ROS 2 system, providing isolated execution environments for robotic computations. Understanding how to create, configure, and manage nodes is essential for developing Physical AI and humanoid robotics applications. Proper error handling, resource management, and lifecycle management ensure robust and reliable systems.
+
+## Exercises
+
+1. Create a node that implements a simple PID controller with configurable parameters
+2. Design a node that fuses data from multiple sensors to estimate robot state
+3. Implement a lifecycle node that manages hardware resources properly
+4. Create a multi-threaded node that performs heavy computation without blocking ROS callbacks
+
+## References
+
+- ROS 2 Node Documentation: https://docs.ros.org/en/humble/How-To-Guides/Using-Parameters-in-a-class-CPP.html
+- Lifecycle Nodes: https://design.ros2.org/articles/node_lifecycle.html
+- ROS 2 Executors: https://docs.ros.org/en/humble/How-To-Guides/Using-Executors.html
+
+## Next Steps
+
+In the next lesson, we'll explore ROS 2 topics and message passing in detail, learning how nodes communicate asynchronously through publish-subscribe patterns.

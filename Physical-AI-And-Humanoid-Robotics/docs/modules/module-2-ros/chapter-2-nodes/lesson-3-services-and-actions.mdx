@@ -1,0 +1,1058 @@
+---
+sidebar_position: 3
+---
+
+# Services and Actions: Synchronous and Goal-Oriented Communication
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Implement and use ROS 2 services for synchronous request-response communication
+- Create and manage ROS 2 actions for long-running, goal-oriented tasks
+- Design service and action interfaces for Physical AI applications
+- Handle errors and feedback in service and action communications
+- Choose appropriate communication patterns for different robotic tasks
+
+## Understanding Services in ROS 2
+
+### Service Communication Pattern
+
+Services provide synchronous request-response communication:
+
+```
+Client Node → Request → Service Server Node
+     ↓                          ↑
+Send Request              Process Request
+     ↓                          ↑
+Wait for Response         Send Response
+     ↓                          ↑
+Receive Response         Return Response
+```
+
+### Service Characteristics
+
+#### Synchronous Communication
+- Client waits for server response
+- Ensures request is processed before continuing
+- Suitable for commands that need immediate results
+
+#### Request-Response Model
+- Defined request and response message types
+- One request generates one response
+- Type-safe communication between client and server
+
+#### Blocking Behavior
+- Client thread blocks during request
+- Server processes requests sequentially
+- Requires careful design to avoid deadlocks
+
+## Creating Services in Python
+
+### Basic Service Server
+
+```python
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+class MinimalService(Node):
+    def __init__(self):
+        super().__init__('minimal_service')
+
+        # Create service server
+        self.srv = self.create_service(
+            AddTwoInts,
+            'add_two_ints',
+            self.add_two_ints_callback
+        )
+
+    def add_two_ints_callback(self, request, response):
+        # Process the request
+        response.sum = request.a + request.b
+
+        # Log the operation
+        self.get_logger().info(f'Request: {request.a} + {request.b}')
+        self.get_logger().info(f'Response: {response.sum}')
+
+        return response
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_service = MinimalService()
+
+    try:
+        rclpy.spin(minimal_service)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        minimal_service.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Service Client
+
+```python
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+class MinimalClient(Node):
+    def __init__(self):
+        super().__init__('minimal_client')
+
+        # Create client
+        self.cli = self.create_client(AddTwoInts, 'add_two_ints')
+
+        # Wait for service to be available
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting again...')
+
+        # Create request
+        self.req = AddTwoInts.Request()
+
+    def send_request(self, a, b):
+        self.req.a = a
+        self.req.b = b
+
+        # Send asynchronous request
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+
+        return self.future.result()
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_client = MinimalClient()
+
+    try:
+        # Send request and get response
+        response = minimal_client.send_request(42, 24)
+        minimal_client.get_logger().info(f'Result: {response.sum}')
+    except KeyboardInterrupt:
+        pass
+    finally:
+        minimal_client.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Non-blocking Service Client
+
+```python
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from example_interfaces.srv import AddTwoInts
+
+class AsyncClient(Node):
+    def __init__(self):
+        super().__init__('async_client')
+
+        self.cli = self.create_client(AddTwoInts, 'add_two_ints')
+
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting again...')
+
+        self.req = AddTwoInts.Request()
+
+    def send_async_request(self, a, b):
+        self.req.a = a
+        self.req.b = b
+
+        # Send asynchronous request
+        future = self.cli.call_async(self.req)
+        future.add_done_callback(self.response_callback)
+
+        return future
+
+    def response_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(f'Response received: {response.sum}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    client = AsyncClient()
+
+    # Send multiple requests
+    client.send_async_request(10, 20)
+    client.send_async_request(30, 40)
+    client.send_async_request(50, 60)
+
+    # Use multi-threaded executor to handle callbacks
+    executor = MultiThreadedExecutor()
+    executor.add_node(client)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        client.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Creating Custom Services
+
+### Service Definition Format
+
+Custom services are defined using `.srv` files with the format:
+```
+# Request fields
+int64 a
+int64 b
+---
+# Response fields
+int64 sum
+```
+
+### Example: Robot Control Service
+
+```txt
+# File: srv/RobotControl.srv
+
+# Request
+string command  # "move", "stop", "home", etc.
+float64[] parameters  # Command-specific parameters
+string target_frame  # Target coordinate frame
+---
+# Response
+bool success
+string message
+float64 execution_time
+```
+
+### Using Custom Services in Python
+
+```python
+from rclpy.node import Node
+from your_package.srv import RobotControl  # Custom service
+
+class RobotControlServer(Node):
+    def __init__(self):
+        super().__init__('robot_control_server')
+
+        self.srv = self.create_service(
+            RobotControl,
+            'robot_control',
+            self.handle_robot_control
+        )
+
+    def handle_robot_control(self, request, response):
+        try:
+            # Process the command
+            command = request.command
+            params = request.parameters
+            frame = request.target_frame
+
+            self.get_logger().info(f'Received command: {command}')
+
+            # Execute command based on type
+            if command == 'move':
+                success = self.execute_move(params, frame)
+            elif command == 'stop':
+                success = self.execute_stop()
+            elif command == 'home':
+                success = self.execute_home()
+            else:
+                success = False
+                response.message = f'Unknown command: {command}'
+
+            # Set response
+            response.success = success
+            response.message = f'Command {command} completed' if success else f'Command {command} failed'
+            response.execution_time = 0.1  # Placeholder
+
+        except Exception as e:
+            response.success = False
+            response.message = f'Error executing command: {str(e)}'
+
+        return response
+
+    def execute_move(self, params, frame):
+        # Implement move logic
+        self.get_logger().info(f'Moving with params: {params}, frame: {frame}')
+        return True
+
+    def execute_stop(self):
+        # Implement stop logic
+        self.get_logger().info('Stopping robot')
+        return True
+
+    def execute_home(self):
+        # Implement home logic
+        self.get_logger().info('Homing robot')
+        return True
+```
+
+## Understanding Actions in ROS 2
+
+### Action Communication Pattern
+
+Actions provide goal-oriented communication with feedback:
+
+```
+Client Node → Goal → Action Server Node
+     ↓                    ↑
+Send Goal           Accept Goal
+     ↓                    ↑
+Wait for Result    Process Goal
+     ↓                    ↑
+Receive Feedback ← Feedback
+     ↓                    ↑
+Receive Result   ←   Send Result
+```
+
+### Action Characteristics
+
+#### Goal-Oriented
+- Client sends a goal to server
+- Server reports progress (feedback)
+- Server returns final result
+
+#### Long-Running Tasks
+- Suitable for operations that take time
+- Provides status updates during execution
+- Supports cancellation
+
+#### Feedback Mechanism
+- Continuous progress updates
+- Allows client to monitor execution
+- Enables dynamic adjustment of goals
+
+## Creating Actions in Python
+
+### Basic Action Server
+
+```python
+import rclpy
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.node import Node
+from your_package.action import Fibonacci  # Custom action
+
+class FibonacciActionServer(Node):
+    def __init__(self):
+        super().__init__('fibonacci_action_server')
+
+        # Create action server
+        self._action_server = ActionServer(
+            self,
+            Fibonacci,
+            'fibonacci',
+            execute_callback=self.execute_callback,
+            callback_group=rclpy.callback_groups.ReentrantCallbackGroup(),
+            goal_callback=self.goal_callback,
+            cancel_callback=self.cancel_callback
+        )
+
+    def destroy(self):
+        self._action_server.destroy()
+        super().destroy_node()
+
+    def goal_callback(self, goal_request):
+        """Accept or reject a client request to begin an action."""
+        self.get_logger().info('Received goal request')
+        return GoalResponse.ACCEPT
+
+    def cancel_callback(self, goal_handle):
+        """Accept or reject a client request to cancel an action."""
+        self.get_logger().info('Received cancel request')
+        return CancelResponse.ACCEPT
+
+    async def execute_callback(self, goal_handle):
+        """Execute the goal."""
+        self.get_logger().info('Executing goal...')
+
+        # Get the goal order
+        order = goal_handle.request.order
+
+        # Feedback and result
+        feedback_msg = Fibonacci.Feedback()
+        result_msg = Fibonacci.Result()
+
+        # Initialize Fibonacci sequence
+        feedback_msg.sequence = [0, 1]
+
+        # Execute the action with feedback
+        for i in range(1, order):
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                self.get_logger().info('Goal canceled')
+                result_msg.sequence = feedback_msg.sequence
+                return result_msg
+
+            if not goal_handle.is_active:
+                self.get_logger().info('Goal aborted')
+                result_msg.sequence = feedback_msg.sequence
+                return result_msg
+
+            # Calculate next Fibonacci number
+            feedback_msg.sequence.append(
+                feedback_msg.sequence[i] + feedback_msg.sequence[i-1]
+            )
+
+            # Publish feedback
+            goal_handle.publish_feedback(feedback_msg)
+            self.get_logger().info(f'Publishing feedback: {feedback_msg.sequence}')
+
+        # Goal completed successfully
+        goal_handle.succeed()
+        result_msg.sequence = feedback_msg.sequence
+        self.get_logger().info(f'Goal succeeded with result: {result_msg.sequence}')
+
+        return result_msg
+
+def main(args=None):
+    rclpy.init(args=args)
+    action_server = FibonacciActionServer()
+
+    try:
+        rclpy.spin(action_server)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        action_server.destroy()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Action Client
+
+```python
+import rclpy
+from rclpy.action import ActionClient
+from rclpy.node import Node
+from your_package.action import Fibonacci  # Custom action
+
+class FibonacciActionClient(Node):
+    def __init__(self):
+        super().__init__('fibonacci_action_client')
+
+        # Create action client
+        self._action_client = ActionClient(
+            self,
+            Fibonacci,
+            'fibonacci'
+        )
+
+    def send_goal(self, order):
+        # Wait for action server
+        self._action_client.wait_for_server()
+
+        # Create goal message
+        goal_msg = Fibonacci.Goal()
+        goal_msg.order = order
+
+        # Send goal and register callbacks
+        self._send_goal_future = self._action_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.feedback_callback
+        )
+
+        self._send_goal_future.add_done_callback(self.goal_response_callback)
+
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info('Goal rejected')
+            return
+
+        self.get_logger().info('Goal accepted')
+
+        # Get result
+        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future.add_done_callback(self.get_result_callback)
+
+    def feedback_callback(self, feedback_msg):
+        self.get_logger().info(
+            f'Received feedback: {feedback_msg.feedback.sequence}'
+        )
+
+    def get_result_callback(self, future):
+        result = future.result().result
+        self.get_logger().info(f'Result: {result.sequence}')
+        rclpy.shutdown()
+
+def main(args=None):
+    rclpy.init(args=args)
+    action_client = FibonacciActionClient()
+
+    # Send goal
+    action_client.send_goal(10)
+
+    try:
+        rclpy.spin(action_client)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        action_client.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Custom Action Definition
+
+### Action Definition Format
+
+Custom actions are defined using `.action` files with the format:
+```
+# Goal
+int32 order
+---
+# Result
+int32[] sequence
+---
+# Feedback
+int32[] sequence
+```
+
+### Example: Navigation Action
+
+```txt
+# File: action/NavigateToPose.action
+
+# Goal
+geometry_msgs/PoseStamped pose
+string behavior_tree  # Optional behavior tree to execute
+---
+# Result
+bool success
+string message
+builtin_interfaces/Time processing_time
+---
+# Feedback
+string current_state  # "planning", "executing", "replanning", etc.
+float64 distance_remaining
+float64 estimated_time_remaining
+```
+
+### Navigation Action Server
+
+```python
+import rclpy
+from rclpy.action import ActionServer
+from rclpy.node import Node
+from your_package.action import NavigateToPose
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
+import math
+
+class NavigateToPoseServer(Node):
+    def __init__(self):
+        super().__init__('navigate_to_pose_server')
+
+        self._action_server = ActionServer(
+            self,
+            NavigateToPose,
+            'navigate_to_pose',
+            execute_callback=self.execute_callback
+        )
+
+        # Publishers and subscribers for navigation
+        self.path_pub = self.create_publisher(Path, 'global_plan', 10)
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
+
+        # State variables
+        self.current_pose = None
+        self.is_navigating = False
+
+    def odom_callback(self, msg):
+        self.current_pose = msg.pose.pose
+
+    async def execute_callback(self, goal_handle):
+        self.get_logger().info('Executing navigation goal...')
+
+        target_pose = goal_handle.request.pose.pose
+        feedback_msg = NavigateToPose.Feedback()
+        result_msg = NavigateToPose.Result()
+
+        start_time = self.get_clock().now()
+
+        # Plan path to target
+        path = self.plan_path(target_pose)
+        self.path_pub.publish(path)
+
+        # Execute navigation
+        while not self.is_goal_reached(target_pose) and goal_handle.is_active:
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                result_msg.success = False
+                result_msg.message = 'Navigation canceled'
+                return result_msg
+
+            # Calculate feedback
+            distance = self.calculate_distance_to_goal(target_pose)
+            estimated_time = self.estimate_time_remaining(distance)
+
+            feedback_msg.current_state = "executing"
+            feedback_msg.distance_remaining = distance
+            feedback_msg.estimated_time_remaining = estimated_time
+
+            goal_handle.publish_feedback(feedback_msg)
+
+            # Send velocity command
+            cmd_vel = self.calculate_velocity_command(target_pose)
+            self.cmd_pub.publish(cmd_vel)
+
+            # Sleep to control loop rate
+            await rclpy.asyncio.sleep(0.1)
+
+        # Check if goal was achieved
+        if self.is_goal_reached(target_pose):
+            goal_handle.succeed()
+            result_msg.success = True
+            result_msg.message = 'Navigation completed successfully'
+        else:
+            goal_handle.abort()
+            result_msg.success = False
+            result_msg.message = 'Navigation failed'
+
+        # Calculate processing time
+        end_time = self.get_clock().now()
+        result_msg.processing_time = (end_time - start_time).nanoseconds / 1e9
+
+        return result_msg
+
+    def plan_path(self, target_pose):
+        # Implement path planning algorithm
+        path = Path()
+        path.header.frame_id = 'map'
+        return path
+
+    def is_goal_reached(self, target_pose):
+        if not self.current_pose:
+            return False
+
+        distance = self.calculate_distance_to_goal(target_pose)
+        return distance < 0.1  # 10 cm threshold
+
+    def calculate_distance_to_goal(self, target_pose):
+        if not self.current_pose:
+            return float('inf')
+
+        dx = target_pose.position.x - self.current_pose.position.x
+        dy = target_pose.position.y - self.current_pose.position.y
+        return math.sqrt(dx*dx + dy*dy)
+
+    def estimate_time_remaining(self, distance):
+        # Simple estimate based on average speed
+        average_speed = 0.5  # m/s
+        return distance / average_speed
+
+    def calculate_velocity_command(self, target_pose):
+        # Implement velocity calculation
+        cmd = Twist()
+        cmd.linear.x = 0.2  # Placeholder
+        cmd.angular.z = 0.1  # Placeholder
+        return cmd
+```
+
+## Service vs. Action: When to Use Which
+
+### Service Use Cases
+
+Use services for:
+- **Short-lived operations**: Commands that complete quickly
+- **Simple request-response**: One request, one response
+- **Synchronous processing**: When caller needs to wait for result
+- **State queries**: Getting current system state
+- **Simple commands**: Turn on/off, set parameter, etc.
+
+```python
+# Example: Get robot battery status
+def get_battery_status(self):
+    request = GetBattery.Request()
+    future = self.battery_client.call_async(request)
+    rclpy.spin_until_future_complete(self, future)
+    return future.result()
+```
+
+### Action Use Cases
+
+Use actions for:
+- **Long-running operations**: Tasks that take significant time
+- **Progress monitoring**: When you need feedback during execution
+- **Cancelable tasks**: Operations that can be interrupted
+- **Goal-oriented behavior**: Complex tasks with intermediate states
+- **Multi-step processes**: Tasks with multiple phases
+
+```python
+# Example: Navigate to a location
+def navigate_to_location(self, x, y, theta):
+    goal = NavigateToPose.Goal()
+    goal.pose.position.x = x
+    goal.pose.position.y = y
+    goal.pose.orientation = self.euler_to_quaternion(0, 0, theta)
+
+    # Send goal and monitor progress
+    self.nav_client.send_goal_async(goal, feedback_callback=self.nav_feedback)
+```
+
+## Error Handling in Services and Actions
+
+### Service Error Handling
+
+```python
+class RobustServiceServer(Node):
+    def __init__(self):
+        super().__init__('robust_service_server')
+        self.srv = self.create_service(RobotControl, 'robot_control', self.safe_control_callback)
+
+    def safe_control_callback(self, request, response):
+        try:
+            # Validate request
+            if not self.validate_request(request):
+                response.success = False
+                response.message = 'Invalid request parameters'
+                return response
+
+            # Execute command with timeout
+            success, message = self.execute_with_timeout(request)
+            response.success = success
+            response.message = message
+
+        except ValueError as e:
+            response.success = False
+            response.message = f'Invalid value: {str(e)}'
+        except RuntimeError as e:
+            response.success = False
+            response.message = f'Runtime error: {str(e)}'
+        except Exception as e:
+            response.success = False
+            response.message = f'Unexpected error: {str(e)}'
+            self.get_logger().error(f'Unexpected error in service: {e}')
+
+        return response
+
+    def validate_request(self, request):
+        # Implement validation logic
+        return True
+
+    def execute_with_timeout(self, request):
+        # Implement timeout logic
+        return True, 'Command executed successfully'
+```
+
+### Action Error Handling
+
+```python
+class RobustActionServer(Node):
+    def __init__(self):
+        super().__init__('robust_action_server')
+        self._action_server = ActionServer(
+            self,
+            NavigateToPose,
+            'navigate_to_pose',
+            execute_callback=self.safe_execute_callback,
+            goal_callback=self.goal_callback
+        )
+
+    def goal_callback(self, goal_request):
+        # Validate goal before accepting
+        if self.is_goal_valid(goal_request):
+            return GoalResponse.ACCEPT
+        else:
+            self.get_logger().warn('Invalid goal rejected')
+            return GoalResponse.REJECT
+
+    def is_goal_valid(self, goal_request):
+        # Validate goal parameters
+        target = goal_request.pose.pose
+        if math.isnan(target.position.x) or math.isnan(target.position.y):
+            return False
+        return True
+
+    async def safe_execute_callback(self, goal_handle):
+        result_msg = NavigateToPose.Result()
+
+        try:
+            # Execute with error handling
+            success, message = await self.safe_navigation_execution(goal_handle)
+            result_msg.success = success
+            result_msg.message = message
+
+            if success:
+                goal_handle.succeed()
+            else:
+                goal_handle.abort()
+
+        except Exception as e:
+            self.get_logger().error(f'Navigation error: {e}')
+            result_msg.success = False
+            result_msg.message = f'Navigation failed: {str(e)}'
+            goal_handle.abort()
+
+        return result_msg
+
+    async def safe_navigation_execution(self, goal_handle):
+        # Implement safe navigation with error handling
+        return True, 'Navigation completed successfully'
+```
+
+## Physical AI Application Patterns
+
+### Robot Control Service Pattern
+
+```python
+from your_package.srv import ExecuteTrajectory
+from trajectory_msgs.msg import JointTrajectory
+
+class RobotControlService(Node):
+    def __init__(self):
+        super().__init__('robot_control_service')
+
+        # Service for executing trajectories
+        self.trajectory_srv = self.create_service(
+            ExecuteTrajectory,
+            'execute_trajectory',
+            self.execute_trajectory_callback
+        )
+
+        # Publisher for joint commands
+        self.joint_pub = self.create_publisher(JointState, 'joint_commands', 10)
+
+        # State tracking
+        self.is_executing = False
+        self.current_trajectory = None
+
+    def execute_trajectory_callback(self, request, response):
+        if self.is_executing:
+            response.success = False
+            response.message = 'Robot is already executing a trajectory'
+            return response
+
+        try:
+            self.is_executing = True
+            success = self.execute_trajectory(request.trajectory)
+            response.success = success
+            response.message = 'Trajectory execution completed' if success else 'Trajectory execution failed'
+        except Exception as e:
+            response.success = False
+            response.message = f'Error executing trajectory: {str(e)}'
+        finally:
+            self.is_executing = False
+
+        return response
+
+    def execute_trajectory(self, trajectory):
+        # Execute joint trajectory point by point
+        for point in trajectory.points:
+            if not self.is_executing:
+                return False  # Canceled
+
+            # Publish joint state
+            joint_state = JointState()
+            joint_state.position = point.positions
+            joint_state.velocity = point.velocities
+            self.joint_pub.publish(joint_state)
+
+            # Wait for point to be reached (simplified)
+            time.sleep(point.time_from_start.sec + point.time_from_start.nanosec / 1e9)
+
+        return True
+```
+
+### Manipulation Action Pattern
+
+```python
+from your_package.action import PickAndPlace
+from geometry_msgs.msg import PoseStamped
+
+class PickAndPlaceAction(Node):
+    def __init__(self):
+        super().__init__('pick_and_place_action')
+
+        self._action_server = ActionServer(
+            self,
+            PickAndPlace,
+            'pick_and_place',
+            execute_callback=self.execute_callback
+        )
+
+        # Publishers and subscribers for manipulation
+        self.arm_pub = self.create_publisher(JointState, 'arm_commands', 10)
+        self.gripper_pub = self.create_publisher(Float64, 'gripper_command', 10)
+        self.object_sub = self.create_subscription(ObjectInfo, 'detected_objects', self.object_callback, 10)
+
+    async def execute_callback(self, goal_handle):
+        feedback_msg = PickAndPlace.Feedback()
+        result_msg = PickAndPlace.Result()
+
+        try:
+            # Step 1: Move to pick position
+            feedback_msg.current_state = 'moving_to_pick'
+            goal_handle.publish_feedback(feedback_msg)
+            success = await self.move_to_position(goal_handle.request.pick_pose)
+            if not success:
+                result_msg.success = False
+                result_msg.message = 'Failed to move to pick position'
+                goal_handle.abort()
+                return result_msg
+
+            # Step 2: Pick object
+            feedback_msg.current_state = 'picking_object'
+            goal_handle.publish_feedback(feedback_msg)
+            success = await self.pick_object()
+            if not success:
+                result_msg.success = False
+                result_msg.message = 'Failed to pick object'
+                goal_handle.abort()
+                return result_msg
+
+            # Step 3: Move to place position
+            feedback_msg.current_state = 'moving_to_place'
+            goal_handle.publish_feedback(feedback_msg)
+            success = await self.move_to_position(goal_handle.request.place_pose)
+            if not success:
+                result_msg.success = False
+                result_msg.message = 'Failed to move to place position'
+                goal_handle.abort()
+                return result_msg
+
+            # Step 4: Place object
+            feedback_msg.current_state = 'placing_object'
+            goal_handle.publish_feedback(feedback_msg)
+            success = await self.place_object()
+            if not success:
+                result_msg.success = False
+                result_msg.message = 'Failed to place object'
+                goal_handle.abort()
+                return result_msg
+
+            # Success
+            result_msg.success = True
+            result_msg.message = 'Pick and place completed successfully'
+            goal_handle.succeed()
+
+        except Exception as e:
+            result_msg.success = False
+            result_msg.message = f'Pick and place failed: {str(e)}'
+            goal_handle.abort()
+
+        return result_msg
+
+    async def move_to_position(self, pose):
+        # Implement arm movement to position
+        return True
+
+    async def pick_object(self):
+        # Implement picking action
+        return True
+
+    async def place_object(self):
+        # Implement placing action
+        return True
+```
+
+## Performance Considerations
+
+### Service Performance
+
+```python
+class OptimizedServiceServer(Node):
+    def __init__(self):
+        super().__init__('optimized_service_server')
+
+        # Use reentrant callback group for better performance
+        callback_group = rclpy.callback_groups.ReentrantCallbackGroup()
+
+        self.srv = self.create_service(
+            RobotControl,
+            'robot_control',
+            self.optimized_control_callback,
+            callback_group=callback_group
+        )
+
+    def optimized_control_callback(self, request, response):
+        # Pre-allocate response message
+        if not hasattr(self, 'response_cache'):
+            self.response_cache = RobotControl.Response()
+
+        # Process request efficiently
+        self.response_cache.success = True
+        self.response_cache.message = 'Command processed'
+        self.response_cache.execution_time = 0.01
+
+        return self.response_cache
+```
+
+### Action Performance
+
+```python
+class OptimizedActionServer(Node):
+    def __init__(self):
+        super().__init__('optimized_action_server')
+
+        # Use reentrant callback group
+        callback_group = rclpy.callback_groups.ReentrantCallbackGroup()
+
+        self._action_server = ActionServer(
+            self,
+            NavigateToPose,
+            'navigate_to_pose',
+            execute_callback=self.optimized_execute_callback,
+            callback_group=callback_group
+        )
+
+    async def optimized_execute_callback(self, goal_handle):
+        # Pre-allocate messages
+        if not hasattr(self, 'feedback_cache'):
+            self.feedback_cache = NavigateToPose.Feedback()
+
+        # Execute efficiently with minimal allocations
+        # ... implementation
+        pass
+```
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Services and actions provide different communication patterns for different use cases in Physical AI systems. Services are ideal for quick, synchronous operations, while actions are perfect for long-running, goal-oriented tasks that require feedback and cancellation capabilities. Choosing the right communication pattern is crucial for system performance and reliability.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Create a service that controls a robot's basic movements (forward, backward, turn)
+2. Implement an action that performs a multi-step manipulation task
+3. Design custom service and action interfaces for your specific robotic application
+4. Build a client that uses both services and actions appropriately
+
+</div>
+
+## Chapter Summary
+
+Services and actions provide essential communication patterns for robotic systems. Services enable synchronous request-response communication for immediate commands and queries, while actions support long-running, goal-oriented tasks with feedback and cancellation capabilities. Understanding when to use each pattern is crucial for designing effective Physical AI systems that can handle both immediate commands and complex, multi-step operations.
+
+## Exercises
+
+1. Implement a service for querying robot state information
+2. Create an action for performing a complex manipulation task with feedback
+3. Design service interfaces for robot calibration procedures
+4. Build an action server for autonomous navigation with obstacle avoidance
+
+## References
+
+- ROS 2 Services: https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Py-Service-And-Client.html
+- ROS 2 Actions: https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Using-Actions-In-Python.html
+- Action Design Patterns: https://design.ros2.org/articles/actions.html
+
+## Next Steps
+
+In the next lesson, we'll explore the chapter summary and review the key concepts of nodes, topics, services, and actions in ROS 2, preparing you for the next module on simulation environments.

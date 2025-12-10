@@ -1,0 +1,386 @@
+---
+sidebar_position: 1
+---
+
+# Introduction to ROS 2: The Robotic Nervous System
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Explain the fundamental concepts and architecture of ROS 2
+- Identify the key differences between ROS 1 and ROS 2
+- Understand the role of ROS 2 in Physical AI and humanoid robotics
+- Describe the core components of the ROS 2 ecosystem
+- Set up a basic ROS 2 development environment
+
+## What is ROS 2?
+
+Robot Operating System 2 (ROS 2) is not an operating system but rather a middleware framework that provides services designed for a heterogeneous computer cluster. It includes hardware abstraction, device drivers, libraries, visualizers, message-passing, package management, and more. ROS 2 is the evolution of the original ROS framework, designed to address the limitations of ROS 1 and provide enterprise-grade capabilities.
+
+### Core Philosophy
+
+ROS 2 follows the philosophy of "loosely coupled, highly integrated" systems:
+- **Modularity**: Components can be developed independently
+- **Reusability**: Code can be shared and reused across projects
+- **Flexibility**: Systems can be configured for different applications
+- **Scalability**: Can handle simple robots to complex multi-robot systems
+
+## Key Differences: ROS 1 vs. ROS 2
+
+### Architectural Changes
+
+#### Communication Layer
+- **ROS 1**: Relies on a centralized master node for name resolution
+- **ROS 2**: Uses DDS (Data Distribution Service) for peer-to-peer communication
+- **Impact**: ROS 2 provides better fault tolerance and distributed operation
+
+#### Quality of Service (QoS)
+- **ROS 1**: Limited QoS controls
+- **ROS 2**: Comprehensive QoS policies for reliability, durability, and performance
+- **Impact**: Critical for real-time and safety-critical applications
+
+#### Security
+- **ROS 1**: No built-in security features
+- **ROS 2**: Built-in security with authentication, encryption, and access control
+- **Impact**: Essential for deployment in industrial and commercial environments
+
+### Programming Language Support
+- **ROS 1**: Primarily C++ and Python
+- **ROS 2**: C++, Python, RCL (Rust, Java, C#, etc.) - extensible architecture
+- **Impact**: Broader language support for diverse development teams
+
+## ROS 2 Architecture
+
+### The DDS Middleware
+
+ROS 2 uses DDS (Data Distribution Service) as its communication layer:
+
+```
+Application Layer (ROS 2 APIs)
+         ↓
+ROS Client Libraries (rclcpp, rclpy)
+         ↓
+DDS Implementation (Fast DDS, Cyclone DDS, RTI Connext)
+         ↓
+Network/Transport Layer
+```
+
+#### DDS Benefits
+- **Real-time Performance**: Deterministic behavior for time-critical applications
+- **Scalability**: Handles systems from single robots to multi-robot teams
+- **Portability**: Standardized API across different DDS implementations
+- **Interoperability**: Can communicate with non-ROS DDS applications
+
+### Core Concepts
+
+#### Nodes
+Nodes are processes that perform computation. In ROS 2:
+- Each node runs independently and can be distributed across machines
+- Nodes are isolated - failure of one node doesn't crash the entire system
+- Nodes can be written in different programming languages
+
+```python
+# Python Node Example
+import rclpy
+from rclpy.node import Node
+
+class MinimalPublisher(Node):
+    def __init__(self):
+        super().__init__('minimal_publisher')
+        self.publisher = self.create_publisher(String, 'topic', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = 'Hello World'
+        self.publisher.publish(msg)
+        self.get_logger().info('Publishing: "%s"' % msg.data)
+```
+
+#### Topics and Messages
+- **Topics**: Named buses over which nodes exchange messages
+- **Messages**: Simple data structures exchanged between nodes
+- **Publishers/Subscribers**: Communication pattern for asynchronous data exchange
+
+#### Services
+- **Services**: Synchronous request/response communication pattern
+- **Clients/Services**: One-to-one communication for command/response interactions
+
+#### Actions
+- **Actions**: Goal-oriented communication pattern with feedback
+- **Action Clients/Servers**: For long-running tasks with status updates
+
+## ROS 2 Ecosystem Components
+
+### Client Libraries
+- **rclcpp**: C++ client library
+- **rclpy**: Python client library
+- **rclc**: C client library for embedded systems
+- **rclrs**: Rust client library
+- **rcljava**: Java client library
+- **rclnodejs**: Node.js client library
+
+### Build System
+- **Colcon**: Modern build system that replaced catkin
+- **ament**: ROS 2's meta-build system
+- **CMake/Ament CMake**: Build configuration tools
+
+### Development Tools
+- **RViz2**: 3D visualization tool for robot data
+- **rqt**: Graphical user interface framework
+- **ros2cli**: Command-line tools for ROS 2
+- **Gazebo**: Physics simulation environment
+- **MoveIt**: Motion planning framework
+
+## ROS 2 in Physical AI and Humanoid Robotics
+
+### Why ROS 2 for Physical AI?
+
+#### Modular Architecture
+ROS 2's modular design is ideal for Physical AI because:
+- **Sensor Integration**: Easy integration of diverse sensor types
+- **Controller Separation**: Decoupled perception, planning, and control
+- **Behavior Modularity**: Independent behavior modules that can be combined
+- **Hardware Abstraction**: Same algorithms work across different hardware platforms
+
+#### Real-time Capabilities
+- **Deterministic Communication**: DDS provides predictable timing
+- **QoS Controls**: Configurable reliability and performance settings
+- **Thread Safety**: Better multi-threading support for parallel processing
+- **Low-latency**: Optimized for real-time control applications
+
+#### Safety and Reliability
+- **Fault Tolerance**: Nodes can fail without crashing the entire system
+- **Process Isolation**: Memory protection between components
+- **Security**: Built-in authentication and encryption
+- **Monitoring**: Comprehensive tooling for system health
+
+### ROS 2 in Humanoid Robotics
+
+#### Standardized Interfaces
+ROS 2 provides standardized interfaces that are crucial for humanoid robots:
+- **sensor_msgs**: Standard message types for sensors
+- **geometry_msgs**: Pose, position, and orientation messages
+- **trajectory_msgs**: Motion trajectory specifications
+- **control_msgs**: Control command interfaces
+- **humanoid_msgs**: Specialized messages for humanoid robots
+
+#### Control Architecture
+Humanoid robots benefit from ROS 2's control architecture:
+- **ros2_control**: Hardware abstraction and control framework
+- **Joint State Interface**: Standardized joint state management
+- **Effort/Torque Control**: Direct force control capabilities
+- **Multi-level Control**: Coordination between high-level planning and low-level control
+
+## Setting Up ROS 2
+
+### Installation Options
+
+#### Ubuntu (Recommended)
+```bash
+# Add ROS 2 repository
+sudo apt update && sudo apt install curl gnupg lsb-release
+curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | sudo gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+sudo apt update
+sudo apt install ros-humble-desktop
+```
+
+#### Docker (Alternative)
+```bash
+# Run ROS 2 in Docker container
+docker run -it --rm ros:humble-ros-base
+```
+
+### Development Environment Setup
+
+#### Source ROS 2
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+#### Create Workspace
+```bash
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws
+colcon build
+source install/setup.bash
+```
+
+### Interactive ROS 2 Example
+
+Here's an interactive example of a simple ROS 2 publisher node. You can modify the code and see how it would work in a real ROS 2 system:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class TalkerNode(Node):
+    def __init__(self):
+        super().__init__('talker')
+        self.publisher = self.create_publisher(String, 'chatter', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.i = 0
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = f'Hello World: {self.i}'
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
+        self.i += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+    talker = TalkerNode()
+
+    try:
+        rclpy.spin(talker)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        talker.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+In this interactive code example, you can:
+- Modify the message text to change what gets published
+- Adjust the timer period to change the publishing frequency
+- Add additional functionality to the node
+
+**Note:** This is a simulation. In a real ROS 2 environment, you would run this code in a terminal after setting up your ROS 2 workspace.
+
+</div>
+
+## ROS 2 QoS (Quality of Service)
+
+### QoS Policies
+
+ROS 2 provides several QoS policies to control communication behavior:
+
+#### Reliability Policy
+- **RELIABLE**: All messages are delivered (with retries)
+- **BEST_EFFORT**: Messages are sent without guarantee of delivery
+
+#### Durability Policy
+- **TRANSIENT_LOCAL**: Publishers keep messages for late-joining subscribers
+- **VOLATILE**: No message persistence
+
+#### History Policy
+- **KEEP_LAST**: Store most recent N messages
+- **KEEP_ALL**: Store all messages (limited by memory)
+
+```python
+# Example QoS configuration
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
+qos_profile = QoSProfile(
+    depth=10,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE
+)
+```
+
+## ROS 2 Launch System
+
+### Composable Nodes
+ROS 2 supports composable nodes that can run in the same process:
+
+```xml
+<!-- launch file example -->
+<launch>
+  <node pkg="composition" exec="component_container" name="container">
+    <param name="use_intra_process_comms" value="true"/>
+  </node>
+
+  <node pkg="composition" exec="talker_component" name="talker">
+    <remap from="chatter" to="topic"/>
+  </node>
+</launch>
+```
+
+### Lifecycle Nodes
+For complex systems with initialization, activation, and shutdown phases:
+
+```cpp
+// C++ Lifecycle Node Example
+class LifecycleTalker : public rclcpp_lifecycle::LifecycleNode
+{
+public:
+    LifecycleTalker() : rclcpp_lifecycle::LifecycleNode("lifecycle_talker") {}
+
+    rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+    on_configure(const rclcpp_lifecycle::State & state)
+    {
+        // Initialize resources
+        return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+    }
+};
+```
+
+## Best Practices for Physical AI
+
+### Design Patterns
+
+#### Publisher-Subscriber Pattern
+For sensor data distribution and event notification:
+```python
+# Sensor node publishes data
+sensor_publisher = self.create_publisher(SensorData, 'sensor_data', qos_profile)
+
+# Multiple nodes can subscribe to the same data
+sensor_subscriber = self.create_subscription(SensorData, 'sensor_data', callback, qos_profile)
+```
+
+#### Client-Service Pattern
+For command and control:
+```python
+# Action node provides services
+command_service = self.create_service(Command, 'execute_command', handle_command)
+
+# Controller calls service
+command_client = self.create_client(Command, 'execute_command')
+```
+
+### Performance Considerations
+
+#### Message Optimization
+- Use efficient message types (avoid large arrays in messages)
+- Implement message compression for large data
+- Use appropriate QoS settings for different data types
+
+#### Process Management
+- Separate computationally intensive tasks into different nodes
+- Use intra-process communication for high-frequency data
+- Implement proper resource management
+
+## Chapter Summary
+
+ROS 2 provides the essential middleware infrastructure for Physical AI and humanoid robotics development. Its distributed architecture, real-time capabilities, and comprehensive tooling make it ideal for building complex robotic systems. The transition from ROS 1 to ROS 2 addresses critical issues like security, real-time performance, and fault tolerance that are essential for deployed robotic systems.
+
+## Exercises
+
+1. Set up a ROS 2 development environment on your system
+2. Create a simple publisher-subscriber pair that exchanges sensor data
+3. Implement a service server that performs a simple computation
+4. Research and compare three different DDS implementations used with ROS 2
+
+## References
+
+- The ROS 2 Development Team. (2022). "ROS 2 Documentation". Available: https://docs.ros.org/en/humble/
+- Pradeep, K. V., et al. (2019). "ROS 2 for real-time control applications"
+- Faconti, G., et al. (2018). "Design and implementation of ROS 2"
+
+## Next Steps
+
+In the next lesson, we'll explore ROS 2 nodes, topics, and services in detail, learning how to create and manage these fundamental communication components in Physical AI systems.

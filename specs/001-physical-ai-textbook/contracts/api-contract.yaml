@@ -1,0 +1,812 @@
+openapi: 3.0.3
+info:
+  title: Physical AI & Humanoid Robotics Textbook API
+  description: API for the Physical AI & Humanoid Robotics Interactive Textbook System
+  version: 1.0.0
+  contact:
+    name: Textbook Development Team
+    email: dev@physical-ai-textbook.com
+
+servers:
+  - url: https://api.physical-ai-textbook.com/v1
+    description: Production server
+  - url: https://staging-api.physical-ai-textbook.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+tags:
+  - name: auth
+    description: Authentication endpoints
+  - name: chat
+    description: RAG chatbot functionality
+  - name: ingest
+    description: Content ingestion functionality
+  - name: progress
+    description: User progress tracking
+  - name: content
+    description: Textbook content management
+  - name: health
+    description: Health check endpoints
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - auth
+      summary: Register a new student
+      description: Creates a new student account with provided credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Student successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: Student login
+      description: Authenticates student and returns JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/profile:
+    get:
+      tags:
+        - auth
+      summary: Get student profile
+      description: Retrieves the authenticated student's profile information
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Student profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat:
+    post:
+      tags:
+        - chat
+      summary: Chat with the textbook AI
+      description: Send a message to the RAG chatbot and receive a response based on textbook content
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat response generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /ingest:
+    post:
+      tags:
+        - ingest
+      summary: Ingest textbook content
+      description: Process and store textbook content for RAG retrieval
+      security:
+        - bearerAuth: []
+        - admin: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '200':
+          description: Content successfully ingested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /content/modules:
+    get:
+      tags:
+        - content
+      summary: Get all modules
+      description: Retrieve a list of all textbook modules
+      responses:
+        '200':
+          description: List of modules retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Module'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /content/modules/{moduleId}/chapters:
+    get:
+      tags:
+        - content
+      summary: Get chapters for a module
+      description: Retrieve a list of chapters for a specific module
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the module
+      responses:
+        '200':
+          description: List of chapters retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chapters:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /content/chapters/{chapterId}/lessons:
+    get:
+      tags:
+        - content
+      summary: Get lessons for a chapter
+      description: Retrieve a list of lessons for a specific chapter
+      parameters:
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the chapter
+      responses:
+        '200':
+          description: List of lessons retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lessons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Lesson'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /progress/{chapterId}:
+    get:
+      tags:
+        - progress
+      summary: Get user progress for a chapter
+      description: Retrieve the progress information for a specific chapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the chapter
+      responses:
+        '200':
+          description: User progress retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - progress
+      summary: Update user progress for a chapter
+      description: Update the progress information for a specific chapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the chapter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProgressRequest'
+      responses:
+        '200':
+          description: User progress updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProgress'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ping:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Simple health check endpoint to verify API is running
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-12-10T10:00:00Z"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    admin:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+        - firstName
+        - lastName
+        - backgroundLevel
+      properties:
+        email:
+          type: string
+          format: email
+          description: Student's email address
+          example: "student@example.com"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          description: Student's chosen username
+          example: "ai_student"
+        password:
+          type: string
+          minLength: 8
+          description: Password for the account
+          example: "SecurePassword123!"
+        firstName:
+          type: string
+          description: Student's first name
+          example: "John"
+        lastName:
+          type: string
+          description: Student's last name
+          example: "Doe"
+        backgroundLevel:
+          type: string
+          enum: ["beginner", "cs_ai", "engineering"]
+          description: Student's technical background level
+          example: "beginner"
+        preferredLanguage:
+          type: string
+          default: "en"
+          description: Preferred language for content
+          example: "en"
+
+    RegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Registration successful"
+        student:
+          $ref: '#/components/schemas/StudentProfile'
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Student's email address
+          example: "student@example.com"
+        password:
+          type: string
+          description: Password for the account
+          example: "SecurePassword123!"
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: JWT token for authentication
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: Refresh token for token renewal
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        student:
+          $ref: '#/components/schemas/StudentProfile'
+
+    StudentProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "student_12345"
+        email:
+          type: string
+          format: email
+          example: "student@example.com"
+        username:
+          type: string
+          example: "ai_student"
+        firstName:
+          type: string
+          example: "John"
+        lastName:
+          type: string
+          example: "Doe"
+        backgroundLevel:
+          type: string
+          enum: ["beginner", "cs_ai", "engineering"]
+          example: "beginner"
+        preferredLanguage:
+          type: string
+          example: "en"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+        lastLoginAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The question or message from the student
+          example: "Explain how ROS 2 nodes communicate with each other"
+        context:
+          type: string
+          description: Optional context such as selected text
+          example: "ROS 2 uses a publish-subscribe model..."
+        selectedText:
+          type: string
+          description: Text that was highlighted by the user
+          example: "nodes communicate through topics"
+        chapterId:
+          type: string
+          description: Optional chapter ID for context
+          example: "chapter_1_1"
+
+    ChatResponse:
+      type: object
+      properties:
+        response:
+          type: string
+          description: The AI-generated response
+          example: "ROS 2 nodes communicate using a publish-subscribe model where publishers send messages to topics and subscribers receive messages from topics..."
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Confidence level of the response
+          example: 0.95
+        groundingValidation:
+          type: boolean
+          description: Whether the response is properly grounded in textbook content
+          example: true
+        responseTime:
+          type: number
+          format: float
+          description: Time taken to generate response in seconds
+          example: 1.2
+
+    Citation:
+      type: object
+      properties:
+        source:
+          type: string
+          description: The source of the citation (chapter, section, etc.)
+          example: "Module 2, Chapter 1, Section 3.2"
+        text:
+          type: string
+          description: The text that was cited
+          example: "Nodes in ROS 2 communicate through topics using a publish-subscribe model..."
+        page:
+          type: string
+          description: Page or location reference
+          example: "page 45"
+        url:
+          type: string
+          format: uri
+          description: Optional URL to the cited content
+          example: "/modules/module-2/chapter-1#section-3.2"
+
+    IngestRequest:
+      type: object
+      required:
+        - content
+        - source
+      properties:
+        content:
+          type: string
+          description: The content to be ingested
+          example: "# Introduction to ROS 2\n\nROS 2 is a middleware for robotics..."
+        source:
+          type: string
+          description: Source identifier for the content
+          example: "module-1/chapter-1.mdx"
+        metadata:
+          type: object
+          description: Additional metadata for the content
+          properties:
+            chapterId:
+              type: string
+              example: "chapter_1_1"
+            moduleId:
+              type: string
+              example: "module_1"
+            title:
+              type: string
+              example: "Introduction to ROS 2"
+
+    IngestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Content ingested successfully"
+        documentId:
+          type: string
+          example: "doc_12345"
+        chunksProcessed:
+          type: integer
+          example: 5
+
+    Module:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "module_1"
+        title:
+          type: string
+          example: "Foundations of Physical AI"
+        slug:
+          type: string
+          example: "foundations-physical-ai"
+        description:
+          type: string
+          example: "Introduction to the fundamental concepts of Physical AI"
+        moduleOrder:
+          type: integer
+          example: 1
+        totalChapters:
+          type: integer
+          example: 4
+        estimatedDurationHours:
+          type: integer
+          example: 10
+        learningOutcomes:
+          type: array
+          items:
+            type: string
+          example: ["Understand basic AI concepts", "Learn about embodied intelligence"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "chapter_1_1"
+        moduleId:
+          type: string
+          example: "module_1"
+        title:
+          type: string
+          example: "Introduction to Robotics"
+        slug:
+          type: string
+          example: "introduction-robotics"
+        description:
+          type: string
+          example: "Basic concepts of robotics and its applications"
+        wordCount:
+          type: integer
+          example: 2500
+        estimatedReadingTime:
+          type: integer
+          example: 12
+        backgroundVariant:
+          type: string
+          enum: ["common", "beginner", "cs_ai", "engineering"]
+          example: "common"
+        learningObjectives:
+          type: array
+          items:
+            type: string
+          example: ["Define robotics", "Identify robot components"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+
+    Lesson:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "lesson_1_1_1"
+        chapterId:
+          type: string
+          example: "chapter_1_1"
+        title:
+          type: string
+          example: "What is a Robot?"
+        slug:
+          type: string
+          example: "what-is-robot"
+        content:
+          type: string
+          example: "# What is a Robot?\n\nA robot is a programmable machine..."
+        lessonOrder:
+          type: integer
+          example: 1
+        estimatedCompletionTime:
+          type: integer
+          example: 5
+        interactiveElements:
+          type: array
+          items:
+            type: string
+          example: ["simulation", "code_playground"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+
+    UserProgress:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "progress_123"
+        studentId:
+          type: string
+          example: "student_12345"
+        chapterId:
+          type: string
+          example: "chapter_1_1"
+        currentLessonIndex:
+          type: integer
+          example: 2
+        completedLessons:
+          type: array
+          items:
+            type: string
+          example: ["lesson_1_1_1", "lesson_1_1_2"]
+        progressPercentage:
+          type: number
+          format: float
+          example: 60.5
+        timeSpentSeconds:
+          type: integer
+          example: 1800
+        lastAccessedAt:
+          type: string
+          format: date-time
+          example: "2025-12-10T10:00:00Z"
+        quizScores:
+          type: array
+          items:
+            type: number
+            format: float
+          example: [85.0, 92.5]
+        personalizationApplied:
+          type: object
+          properties:
+            backgroundLevel:
+              type: string
+              example: "beginner"
+            language:
+              type: string
+              example: "en"
+
+    UpdateProgressRequest:
+      type: object
+      properties:
+        currentLessonIndex:
+          type: integer
+          example: 3
+        completedLessons:
+          type: array
+          items:
+            type: string
+          example: ["lesson_1_1_1", "lesson_1_1_2", "lesson_1_1_3"]
+        timeSpentSeconds:
+          type: integer
+          example: 2400
+        quizScores:
+          type: array
+          items:
+            type: number
+            format: float
+          example: [85.0, 92.5]
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Invalid input parameters"
+              details:
+                type: object
+                example: {"field": "email", "reason": "Invalid email format"}
+
+    Unauthorized:
+      description: Unauthorized - authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Authentication required"
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Insufficient permissions"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Resource not found"
+
+    Conflict:
+      description: Conflict - resource already exists
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Resource already exists"
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Rate limit exceeded, please try again later"

@@ -1,0 +1,1487 @@
+---
+sidebar_position: 2
+---
+
+# Lesson 2: Advanced Simulation Techniques
+
+## Learning Objectives
+
+By the end of this lesson, you should be able to:
+1. Implement high-fidelity rendering techniques for photorealistic simulation
+2. Integrate Unity with Gazebo for enhanced visual quality
+3. Configure advanced physics simulation parameters for realistic behavior
+4. Create realistic sensor models with noise and distortion
+5. Generate synthetic datasets for AI training
+6. Optimize simulation performance for complex environments
+7. Implement domain randomization techniques for sim-to-real transfer
+
+## Table of Contents
+
+- [High-Fidelity Rendering Techniques](#high-fidelity-rendering-techniques)
+- [Unity Integration with Gazebo](#unity-integration-with-gazebo)
+- [Advanced Physics Simulation](#advanced-physics-simulation)
+- [Realistic Sensor Modeling](#realistic-sensor-modeling)
+- [Synthetic Data Generation](#synthetic-data-generation)
+- [Performance Optimization](#performance-optimization)
+- [Domain Randomization](#domain-randomization)
+- [Chapter Summary](#chapter-summary)
+
+## High-Fidelity Rendering Techniques
+
+High-fidelity rendering is crucial for creating photorealistic simulations that can be used for training computer vision models. Advanced rendering techniques include Physically Based Rendering (PBR), advanced lighting systems, and realistic material properties.
+
+### Physically Based Rendering (PBR)
+
+PBR materials simulate how light interacts with surfaces in a physically accurate way. This creates more realistic appearances that are essential for sim-to-real transfer.
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;model name="pbr-material-example"&gt;
+    &lt;link name="link"&gt;
+      &lt;visual name="visual"&gt;
+        &lt;geometry&gt;
+          &lt;box&gt;
+            &lt;size&gt;1 1 1&lt;/size&gt;
+          &lt;/box&gt;
+        &lt;/geometry&gt;
+        &lt;material&gt;
+          &lt;script&gt;
+            &lt;uri&gt;file://media/materials/scripts/gazebo.material&lt;/uri&gt;
+            &lt;name&gt;Gazebo/PBR/Metal&lt;/name&gt;
+          &lt;/script&gt;
+          &lt;pbr&gt;
+            &lt;metal&gt;
+              &lt;albedo_map&gt;file://materials/textures/metal_albedo.png&lt;/albedo_map&gt;
+              &lt;normal_map&gt;file://materials/textures/metal_normal.png&lt;/normal_map&gt;
+              &lt;metalness_map&gt;file://materials/textures/metal_metalness.png&lt;/metalness_map&gt;
+              &lt;roughness_map&gt;file://materials/textures/metal_roughness.png&lt;/roughness_map&gt;
+              &lt;albedo&gt;0.8 0.8 0.8 1.0&lt;/albedo&gt;
+              &lt;metalness&gt;0.9&lt;/metalness&gt;
+              &lt;roughness&gt;0.1&lt;/roughness&gt;
+            &lt;/metal&gt;
+          &lt;/pbr&gt;
+        &lt;/material&gt;
+      &lt;/visual&gt;
+    &lt;/link&gt;
+  &lt;/model&gt;
+&lt;/sdf&gt;
+```
+
+### Advanced Lighting Systems
+
+Advanced lighting systems include global illumination, realistic shadows, and dynamic lighting conditions that match real-world environments.
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;world name="advanced_lighting_world"&gt;
+    &lt;light name="sun" type="directional"&gt;
+      &lt;pose&gt;0 0 10 0 0 0&lt;/pose&gt;
+      &lt;diffuse&gt;0.8 0.8 0.8 1&lt;/diffuse&gt;
+      &lt;specular&gt;0.2 0.2 0.2 1&lt;/specular&gt;
+      &lt;attenuation&gt;
+        &lt;range&gt;1000&lt;/range&gt;
+        &lt;constant&gt;0.9&lt;/constant&gt;
+        &lt;linear&gt;0.01&lt;/linear&gt;
+        &lt;quadratic&gt;0.001&lt;/quadratic&gt;
+      &lt;/attenuation&gt;
+      &lt;direction&gt;-0.3 0.3 -0.9&lt;/direction&gt;
+    &lt;/light&gt;
+
+    &lt;light name="fill_light" type="point"&gt;
+      &lt;pose&gt;5 5 5 0 0 0&lt;/pose&gt;
+      &lt;diffuse&gt;0.3 0.3 0.4 1&lt;/diffuse&gt;
+      &lt;specular&gt;0.1 0.1 0.1 1&lt;/specular&gt;
+      &lt;attenuation&gt;
+        &lt;range&gt;20&lt;/range&gt;
+        &lt;constant&gt;0.2&lt;/constant&gt;
+        &lt;linear&gt;0.3&lt;/linear&gt;
+        &lt;quadratic&gt;0.05&lt;/quadratic&gt;
+      &lt;/attenuation&gt;
+    &lt;/light&gt;
+
+    &lt;!-- IBL (Image-Based Lighting) configuration --&gt;
+    &lt;scene&gt;
+      &lt;grid&gt;true&lt;/grid&gt;
+      &lt;shadows&gt;true&lt;/shadows&gt;
+      &lt;sky&gt;
+        &lt;time&gt;12:00&lt;/time&gt;
+        &lt;clouds&gt;
+          &lt;speed&gt;0.6&lt;/speed&gt;
+          &lt;mean_size&gt;0.5&lt;/mean_size&gt;
+        &lt;/clouds&gt;
+      &lt;/sky&gt;
+    &lt;/scene&gt;
+  &lt;/world&gt;
+&lt;/sdf&gt;
+```
+
+### Advanced Shaders and Effects
+
+Custom shaders can be used to create complex visual effects that enhance realism:
+
+```glsl
+// Vertex shader for advanced PBR rendering
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTexCoord;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+uniform mat3 normalMatrix;
+
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoord;
+
+void main()
+{
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = normalMatrix * aNormal;
+    TexCoord = aTexCoord;
+
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+}
+```
+
+```glsl
+// Fragment shader for PBR lighting
+#version 330 core
+out vec4 FragColor;
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec2 TexCoord;
+
+uniform vec3 viewPos;
+uniform vec3 lightPos;
+uniform vec3 lightColor;
+
+// Material properties
+uniform vec3 albedo;
+uniform float metallic;
+uniform float roughness;
+uniform float ao;
+
+// PBR functions
+float DistributionGGX(vec3 N, vec3 H, float roughness)
+{
+    float a = roughness*roughness;
+    float a2 = a*a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH*NdotH;
+
+    float nom   = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r*r) / 8.0;
+
+    float nom   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+void main()
+{
+    vec3 N = normalize(Normal);
+    vec3 V = normalize(viewPos - FragPos);
+    vec3 L = normalize(lightPos - FragPos);
+    vec3 H = normalize(V + L);
+
+    // Cook-Torrance BRDF
+    float NDF = DistributionGGX(N, H, roughness);
+    float G   = GeometrySmith(N, V, L, roughness);
+    vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 irradiance = texture(irradianceMap, N).rgb;
+    vec3 diffuse    = irradiance * albedo;
+
+    vec3 R = reflect(-V, N);
+    vec3 prefilteredColor = textureLod(prefilteredMap, R,  roughness).rgb;
+    vec2 envBRDF  = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+    vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+
+    vec3 ambient = (kD * diffuse + specular) * ao;
+
+    vec3 Lo = vec3(0.0);
+    Lo += radiance * (F * NDF * G) / (4.0 * NdotL * NdotV);
+
+    vec3 color = ambient + Lo;
+
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0/2.2));
+
+    FragColor = vec4(color, 1.0);
+}
+```
+
+## Unity Integration with Gazebo
+
+Unity can be integrated with Gazebo to create high-quality visual environments. This integration allows for advanced rendering capabilities while maintaining Gazebo's physics simulation.
+
+### Unity-Gazebo Bridge Architecture
+
+The Unity-Gazebo bridge allows for bidirectional communication between Unity's rendering engine and Gazebo's physics engine.
+
+```python
+#!/usr/bin/env python3
+
+"""
+Unity-Gazebo Bridge Node
+This node facilitates communication between Unity and Gazebo environments
+"""
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, CameraInfo
+from geometry_msgs.msg import Pose, Twist
+from std_msgs.msg import String
+import numpy as np
+import cv2
+from cv_bridge import CvBridge
+import socket
+import json
+import threading
+
+class UnityGazeboBridge(Node):
+    def __init__(self):
+        super().__init__('unity_gazebo_bridge')
+
+        # ROS 2 publishers and subscribers
+        self.bridge = CvBridge()
+        self.image_pub = self.create_publisher(Image, '/unity/camera/image_raw', 10)
+        self.camera_info_pub = self.create_publisher(CameraInfo, '/unity/camera/camera_info', 10)
+        self.unity_pose_sub = self.create_subscription(
+            Pose, '/unity/robot/pose', self.unity_pose_callback, 10)
+
+        # Unity network interface
+        self.unity_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.unity_host = 'localhost'
+        self.unity_port = 5000
+        self.connect_to_unity()
+
+        # Timer for receiving Unity data
+        self.timer = self.create_timer(0.016, self.receive_from_unity)  # ~60 FPS
+
+    def connect_to_unity(self):
+        """Connect to Unity application"""
+        try:
+            self.unity_socket.connect((self.unity_host, self.unity_port))
+            self.get_logger().info('Connected to Unity application')
+        except Exception as e:
+            self.get_logger().error(f'Failed to connect to Unity: {e}')
+
+    def receive_from_unity(self):
+        """Receive data from Unity and publish to ROS topics"""
+        try:
+            # Receive data from Unity
+            data = self.unity_socket.recv(4096)
+            if data:
+                unity_data = json.loads(data.decode('utf-8'))
+
+                # Process image data
+                if 'image' in unity_data:
+                    image_data = self.process_unity_image(unity_data['image'])
+                    self.image_pub.publish(image_data)
+
+                # Process camera info
+                if 'camera_info' in unity_data:
+                    camera_info = self.create_camera_info(unity_data['camera_info'])
+                    self.camera_info_pub.publish(camera_info)
+
+        except Exception as e:
+            self.get_logger().error(f'Error receiving from Unity: {e}')
+
+    def process_unity_image(self, image_data):
+        """Process image data from Unity"""
+        # Convert Unity image data to ROS Image message
+        # This is a simplified example - in practice, you'd handle the actual image format
+        image_array = np.frombuffer(image_data['data'], dtype=np.uint8)
+        image_array = image_array.reshape((image_data['height'], image_data['width'], 3))
+
+        ros_image = self.bridge.cv2_to_imgmsg(image_array, encoding="bgr8")
+        return ros_image
+
+    def create_camera_info(self, camera_data):
+        """Create CameraInfo message from Unity camera data"""
+        camera_info = CameraInfo()
+        camera_info.width = camera_data['width']
+        camera_info.height = camera_data['height']
+        camera_info.k = camera_data['intrinsic_matrix']
+        camera_info.distortion_model = 'plumb_bob'
+        camera_info.d = camera_data['distortion_coefficients']
+
+        return camera_info
+
+    def unity_pose_callback(self, msg):
+        """Send pose data to Unity"""
+        pose_data = {
+            'type': 'robot_pose',
+            'position': {'x': msg.position.x, 'y': msg.position.y, 'z': msg.position.z},
+            'orientation': {'x': msg.orientation.x, 'y': msg.orientation.y, 'z': msg.orientation.z, 'w': msg.orientation.w}
+        }
+
+        try:
+            self.unity_socket.send(json.dumps(pose_data).encode('utf-8'))
+        except Exception as e:
+            self.get_logger().error(f'Error sending to Unity: {e}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    unity_bridge = UnityGazeboBridge()
+
+    try:
+        rclpy.spin(unity_bridge)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        unity_bridge.unity_socket.close()
+        unity_bridge.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Unity Asset Configuration
+
+Unity assets need to be configured to work properly with the Gazebo bridge:
+
+```csharp
+// UnityGazeboBridge.cs
+using UnityEngine;
+using System.Collections;
+using System.Net.Sockets;
+using System.Text;
+using Newtonsoft.Json;
+
+public class UnityGazeboBridge : MonoBehaviour
+{
+    [Header("Network Configuration")]
+    public string gazeboHost = "localhost";
+    public int gazeboPort = 5000;
+
+    [Header("Camera Settings")]
+    public Camera unityCamera;
+    public int imageWidth = 640;
+    public int imageHeight = 480;
+
+    private TcpClient tcpClient;
+    private NetworkStream stream;
+    private bool isConnected = false;
+
+    void Start()
+    {
+        ConnectToGazebo();
+    }
+
+    void Update()
+    {
+        if (isConnected)
+        {
+            SendCameraImage();
+            SendRobotPose();
+        }
+    }
+
+    void ConnectToGazebo()
+    {
+        try
+        {
+            tcpClient = new TcpClient(gazeboHost, gazeboPort);
+            stream = tcpClient.GetStream();
+            isConnected = true;
+            Debug.Log("Connected to Gazebo bridge");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Failed to connect to Gazebo: " + e.Message);
+        }
+    }
+
+    void SendCameraImage()
+    {
+        // Capture image from Unity camera
+        Texture2D imageTexture = CaptureCameraImage(unityCamera);
+
+        // Convert to byte array
+        byte[] imageBytes = imageTexture.EncodeToPNG();
+
+        // Create image data object
+        var imageData = new
+        {
+            type = "image",
+            width = imageWidth,
+            height = imageHeight,
+            format = "PNG",
+            data = System.Convert.ToBase64String(imageBytes)
+        };
+
+        // Send to Gazebo
+        SendData(imageData);
+    }
+
+    Texture2D CaptureCameraImage(Camera camera)
+    {
+        // Render texture to capture image
+        RenderTexture currentRT = RenderTexture.active;
+        RenderTexture.active = camera.targetTexture;
+
+        camera.Render();
+
+        Texture2D image = new Texture2D(camera.targetTexture.width, camera.targetTexture.height);
+        image.ReadPixels(new Rect(0, 0, camera.targetTexture.width, camera.targetTexture.height), 0, 0);
+        image.Apply();
+
+        RenderTexture.active = currentRT;
+
+        return image;
+    }
+
+    void SendRobotPose()
+    {
+        // Send robot pose data to Gazebo
+        var poseData = new
+        {
+            type = "robot_pose",
+            position = new { x = transform.position.x, y = transform.position.y, z = transform.position.z },
+            rotation = new { x = transform.rotation.x, y = transform.rotation.y, z = transform.rotation.z, w = transform.rotation.w }
+        };
+
+        SendData(poseData);
+    }
+
+    void SendData(object data)
+    {
+        try
+        {
+            string jsonData = JsonConvert.SerializeObject(data);
+            byte[] dataBytes = Encoding.UTF8.GetBytes(jsonData);
+            stream.Write(dataBytes, 0, dataBytes.Length);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error sending data to Gazebo: " + e.Message);
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (tcpClient != null)
+        {
+            tcpClient.Close();
+        }
+    }
+}
+```
+
+## Advanced Physics Simulation
+
+Advanced physics simulation involves configuring complex parameters for realistic behavior, including multi-body dynamics, contact properties, and constraint systems.
+
+### Multi-Body Dynamics Configuration
+
+Multi-body dynamics allow for complex interactions between multiple rigid bodies with realistic physics:
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;model name="complex_multibody_robot"&gt;
+    &lt;link name="base_link"&gt;
+      &lt;inertial&gt;
+        &lt;mass&gt;10.0&lt;/mass&gt;
+        &lt;inertia&gt;
+          &lt;ixx&gt;0.1&lt;/ixx&gt;
+          &lt;iyy&gt;0.1&lt;/iyy&gt;
+          &lt;izz&gt;0.1&lt;/izz&gt;
+          &lt;ixy&gt;0.0&lt;/ixy&gt;
+          &lt;ixz&gt;0.0&lt;/ixz&gt;
+          &lt;iyz&gt;0.0&lt;/iyz&gt;
+        &lt;/inertia&gt;
+      &lt;/inertial&gt;
+      &lt;collision name="collision"&gt;
+        &lt;geometry&gt;
+          &lt;cylinder&gt;
+            &lt;radius&gt;0.3&lt;/radius&gt;
+            &lt;length&gt;0.5&lt;/length&gt;
+          &lt;/cylinder&gt;
+        &lt;/geometry&gt;
+        &lt;surface&gt;
+          &lt;contact&gt;
+            &lt;ode&gt;
+              &lt;soft_cfm&gt;0.001&lt;/soft_cfm&gt;
+              &lt;soft_erp&gt;0.8&lt;/soft_erp&gt;
+              &lt;kp&gt;1e+6&lt;/kp&gt;
+              &lt;kd&gt;100&lt;/kd&gt;
+              &lt;max_vel&gt;100.0&lt;/max_vel&gt;
+              &lt;min_depth&gt;0.001&lt;/min_depth&gt;
+            &lt;/ode&gt;
+          &lt;/contact&gt;
+          &lt;bounce&gt;
+            &lt;restitution_coefficient&gt;0.1&lt;/restitution_coefficient&gt;
+            &lt<threshold&gt;100000&lt;/threshold&gt;
+          &lt;/bounce&gt;
+          &lt;friction&gt;
+            &lt;ode&gt;
+              &lt;mu&gt;1.0&lt;/mu&gt;
+              &lt;mu2&gt;1.0&lt;/mu2&gt;
+              &lt;fdir1&gt;0 0 1&lt;/fdir1&gt;
+              &lt;slip1&gt;0.0&lt;/slip1&gt;
+              &lt;slip2&gt;0.0&lt;/slip2&gt;
+            &lt;/ode&gt;
+          &lt;/friction&gt;
+        &lt;/surface&gt;
+      &lt;/collision&gt;
+      &lt;visual name="visual"&gt;
+        &lt;geometry&gt;
+          &lt;cylinder&gt;
+            &lt;radius&gt;0.3&lt;/radius&gt;
+            &lt;length&gt;0.5&lt;/length&gt;
+          &lt;/cylinder&gt;
+        &lt;/geometry&gt;
+      &lt;/visual&gt;
+    &lt;/link&gt;
+
+    &lt;joint name="hip_joint" type="revolute"&gt;
+      &lt;parent&gt;base_link&lt;/parent&gt;
+      &lt;child&gt;thigh_link&lt;/child&gt;
+      &lt;axis&gt;
+        &lt;xyz&gt;0 0 1&lt;/xyz&gt;
+        &lt;limit&gt;
+          &lt;lower&gt;-1.57&lt;/lower&gt;
+          &lt;upper&gt;1.57&lt;/upper&gt;
+          &lt;effort&gt;100.0&lt;/effort&gt;
+          &lt;velocity&gt;3.0&lt;/velocity&gt;
+        &lt;/limit&gt;
+        &lt;dynamics&gt;
+          &lt;damping&gt;1.0&lt;/damping&gt;
+          &lt;friction&gt;0.1&lt;/friction&gt;
+          &lt;spring_reference&gt;0&lt;/spring_reference&gt;
+          &lt;spring_stiffness&gt;0&lt;/spring_stiffness&gt;
+        &lt;/dynamics&gt;
+      &lt;/axis&gt;
+    &lt;/joint&gt;
+
+    &lt;link name="thigh_link"&gt;
+      &lt;inertial&gt;
+        &lt;mass&gt;2.0&lt;/mass&gt;
+        &lt;inertia&gt;
+          &lt;ixx&gt;0.02&lt;/ixx&gt;
+          &lt;iyy&gt;0.02&lt;/iyy&gt;
+          &lt;izz&gt;0.002&lt;/izz&gt;
+        &lt;/inertia&gt;
+      &lt;/inertial&gt;
+      &lt;collision name="collision"&gt;
+        &lt;geometry&gt;
+          &lt;cylinder&gt;
+            &lt;radius&gt;0.05&lt;/radius&gt;
+            &lt;length&gt;0.4&lt;/length&gt;
+          &lt;/cylinder&gt;
+        &lt;/geometry&gt;
+        &lt;surface&gt;
+          &lt;contact&gt;
+            &lt;ode&gt;
+              &lt;soft_cfm&gt;0.001&lt;/soft_cfm&gt;
+              &lt;soft_erp&gt;0.8&lt;/soft_erp&gt;
+            &lt;/ode&gt;
+          &lt;/contact&gt;
+        &lt;/surface&gt;
+      &lt;/collision&gt;
+    &lt;/link&gt;
+  &lt;/model&gt;
+&lt;/sdf&gt;
+```
+
+### Advanced Contact Properties
+
+Fine-tuning contact properties is essential for realistic physics simulation:
+
+```python
+#!/usr/bin/env python3
+
+"""
+Advanced Physics Configuration Manager
+Manages complex physics parameters for realistic simulation
+"""
+
+import rclpy
+from rclpy.node import Node
+from gazebo_msgs.srv import SetPhysicsProperties, GetPhysicsProperties
+from gazebo_msgs.msg import ODEPhysics
+from std_msgs.msg import Float64
+
+class PhysicsConfigManager(Node):
+    def __init__(self):
+        super().__init__('physics_config_manager')
+
+        # Physics services
+        self.set_physics_client = self.create_client(SetPhysicsProperties, '/set_physics_properties')
+        self.get_physics_client = self.create_client(GetPhysicsProperties, '/get_physics_properties')
+
+        # Wait for services
+        while not self.set_physics_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Set physics properties service not available, waiting...')
+
+        while not self.get_physics_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Get physics properties service not available, waiting...')
+
+        # Configure advanced physics properties
+        self.configure_advanced_physics()
+
+    def configure_advanced_physics(self):
+        """Configure advanced physics properties for realistic simulation"""
+        request = SetPhysicsProperties.Request()
+
+        # Time stepping
+        request.time_step = 0.001  # 1ms time step for accuracy
+        request.max_step_size = 0.001
+        request.real_time_update_rate = 1000.0  # 1000 Hz update rate
+
+        # Gravity
+        request.gravity.x = 0.0
+        request.gravity.y = 0.0
+        request.gravity.z = -9.81
+
+        # ODE physics parameters
+        request.ode_config.auto_disable_bodies = False
+        request.ode_config.sor_pgs_precon_iters = 2
+        request.ode_config.sor_pgs_iters = 50
+        request.ode_config.sor_pgs_w = 1.3
+        request.ode_config.ode_contact_surface_layer = 0.001
+        request.ode_config.ode_max_contacts = 20
+
+        # Solver parameters for realistic behavior
+        request.ode_config.ode_cfm = 1e-6  # Constraint Force Mixing
+        request.ode_config.ode_erp = 0.2   # Error Reduction Parameter
+
+        # Send configuration
+        future = self.set_physics_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+
+        if future.result() is not None:
+            response = future.result()
+            if response.success:
+                self.get_logger().info('Advanced physics configuration applied successfully')
+            else:
+                self.get_logger().error(f'Failed to configure physics: {response.status_message}')
+        else:
+            self.get_logger().error('Failed to call set physics properties service')
+
+    def get_current_physics_properties(self):
+        """Get current physics properties"""
+        request = GetPhysicsProperties.Request()
+        future = self.get_physics_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+
+        if future.result() is not None:
+            response = future.result()
+            self.get_logger().info(f'Current physics properties: time_step={response.time_step}, '
+                                 f'real_time_factor={response.current_real_time_factor}')
+            return response
+        else:
+            self.get_logger().error('Failed to get physics properties')
+            return None
+
+def main(args=None):
+    rclpy.init(args=args)
+    physics_manager = PhysicsConfigManager()
+
+    # Get current properties
+    physics_manager.get_current_physics_properties()
+
+    # Keep the node running
+    try:
+        rclpy.spin(physics_manager)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        physics_manager.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Realistic Sensor Modeling
+
+Creating realistic sensor models with appropriate noise, distortion, and environmental effects is crucial for sim-to-real transfer.
+
+### Advanced Camera Sensor Model
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;sensor name="realistic_camera" type="camera"&gt;
+    &lt;always_on&gt;true&lt;/always_on&gt;
+    &lt;update_rate&gt;30&lt;/update_rate&gt;
+    &lt;camera name="head"&gt;
+      &lt;horizontal_fov&gt;1.089&lt;/horizontal_fov&gt;
+      &lt;image&gt;
+        &lt;width&gt;640&lt;/width&gt;
+        &lt;height&gt;480&lt;/height&gt;
+        &lt;format&gt;R8G8B8&lt;/format&gt;
+      &lt;/image&gt;
+      &lt;clip&gt;
+        &lt;near&gt;0.1&lt;/near&gt;
+        &lt;far&gt;100&lt;/far&gt;
+      &lt;/clip&gt;
+      &lt;noise&gt;
+        &lt;type&gt;gaussian&lt;/type&gt;
+        &lt;mean&gt;0.0&lt;/mean&gt;
+        &lt;stddev&gt;0.007&lt;/stddev&gt;
+      &lt;/noise&gt;
+      &lt;lens&gt;
+        &lt;type&gt;stereographic&lt;/type&gt;
+        &lt;scale_to_hfov&gt;true&lt;/scale_to_hfov&gt;
+        &lt;c1&gt;1.0&lt;/c1&gt;
+        &lt;c2&gt;1.0&lt;/c2&gt;
+        &lt;focal_length&gt;277&lt;/focal_length&gt;
+        &lt;function&gt;sin&lt;/function&gt;
+        &lt;cutoff_angle&gt;3.1415&lt;/cutoff_angle&gt;
+        &lt;env_texture_size&gt;512&lt;/env_texture_size&gt;
+      &lt;/lens&gt;
+    &lt;/camera&gt;
+    &lt;plugin name="camera_controller" filename="libgazebo_ros_camera.so"&gt;
+      &lt;frame_name&gt;camera_link&lt;/frame_name&gt;
+      &lt;min_depth&gt;0.1&lt;/min_depth&gt;
+      &lt;max_depth&gt;10.0&lt;/max_depth&gt;
+      &lt;hack_baseline&gt;0.07&lt;/hack_baseline&gt;
+      &lt;distortion_k1&gt;0.1&lt;/distortion_k1&gt;
+      &lt;distortion_k2&gt;-0.2&lt;/distortion_k2&gt;
+      &lt;distortion_k3&gt;0.05&lt;/distortion_k3&gt;
+      &lt;distortion_t1&gt;0.01&lt;/distortion_t1&gt;
+      &lt;distortion_t2&gt;-0.01&lt;/distortion_t2&gt;
+    &lt;/plugin&gt;
+  &lt;/sensor&gt;
+&lt;/sdf&gt;
+```
+
+### Advanced LIDAR Sensor Model
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;sensor name="realistic_lidar" type="ray"&gt;
+    &lt;always_on&gt;true&lt;/always_on&gt;
+    &lt;update_rate&gt;10&lt;/update_rate&gt;
+    &lt;ray&gt;
+      &lt;scan&gt;
+        &lt;horizontal&gt;
+          &lt;samples&gt;1080&lt;/samples&gt;
+          &lt;resolution&gt;1&lt;/resolution&gt;
+          &lt;min_angle&gt;-3.14159&lt;/min_angle&gt;
+          &lt;max_angle&gt;3.14159&lt;/max_angle&gt;
+        &lt;/horizontal&gt;
+        &lt;vertical&gt;
+          &lt;samples&gt;64&lt;/samples&gt;
+          &lt;resolution&gt;1&lt;/resolution&gt;
+          &lt;min_angle&gt;-0.261799&lt;/min_angle&gt;
+          &lt;max_angle&gt;0.261799&lt;/max_angle&gt;
+        &lt;/vertical&gt;
+      &lt;/scan&gt;
+      &lt;range&gt;
+        &lt;min&gt;0.08&lt;/min&gt;
+        &lt;max&gt;100&lt;/max&gt;
+        &lt;resolution&gt;0.01&lt;/resolution&gt;
+      &lt;/range&gt;
+      &lt;noise&gt;
+        &lt;type&gt;gaussian&lt;/type&gt;
+        &lt;mean&gt;0.0&lt;/mean&gt;
+        &lt;stddev&gt;0.01&lt;/stddev&gt;
+      &lt;/noise&gt;
+    &lt;/ray&gt;
+    &lt;plugin name="lidar_controller" filename="libgazebo_ros_laser.so"&gt;
+      &lt;topic_name&gt;/laser_scan&lt;/topic_name&gt;
+      &lt;frame_name&gt;lidar_link&lt;/frame_name&gt;
+      &lt;min_range&gt;0.1&lt;/min_range&gt;
+      &lt;max_range&gt;30.0&lt;/max_range&gt;
+      &lt;gaussian_noise&gt;0.01&lt;/gaussian_noise&gt;
+    &lt;/plugin&gt;
+  &lt;/sensor&gt;
+&lt;/sdf&gt;
+```
+
+### IMU Sensor with Realistic Noise
+
+```xml>
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;sensor name="realistic_imu" type="imu"&gt;
+    &lt;always_on&gt;true&lt;/always_on&gt;
+    &lt;update_rate&gt;100&lt;/update_rate&gt;
+    &lt;imu&gt;
+      &lt;angular_velocity&gt;
+        &lt;x&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.0017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.00017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/x&gt;
+        &lt;y&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.0017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.00017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/y&gt;
+        &lt;z&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.0017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.00017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/z&gt;
+      &lt;/angular_velocity&gt;
+      &lt;linear_acceleration&gt;
+        &lt;x&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.0017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/x&gt;
+        &lt;y&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.0017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/y&gt;
+        &lt;z&gt;
+          &lt;noise type="gaussian"&gt;
+            &lt;mean&gt;0.0&lt;/mean&gt;
+            &lt;stddev&gt;0.017&lt;/stddev&gt;
+            &lt;bias_mean&gt;0.0&lt;/bias_mean&gt;
+            &lt;bias_stddev&gt;0.0017&lt;/bias_stddev&gt;
+          &lt;/noise&gt;
+        &lt;/z&gt;
+      &lt;/linear_acceleration&gt;
+    &lt;/imu&gt;
+    &lt;plugin name="imu_controller" filename="libgazebo_ros_imu.so"&gt;
+      &lt;topic_name&gt;/imu/data&lt;/topic_name&gt;
+      &lt;frame_name&gt;imu_link&lt;/frame_name&gt;
+      &lt;body_name&gt;imu_body&lt;/body_name&gt;
+      &lt;update_rate&gt;100&lt;/update_rate&gt;
+      &lt;gaussian_noise&gt;0.017&lt;/gaussian_noise&gt;
+    &lt;/plugin&gt;
+  &lt;/sensor&gt;
+&lt;/sdf&gt;
+```
+
+## Synthetic Data Generation
+
+Synthetic data generation is crucial for training AI models that can work in real-world scenarios. This involves creating diverse, labeled datasets from simulation.
+
+### Data Generation Pipeline
+
+```python
+#!/usr/bin/env python3
+
+"""
+Synthetic Data Generation Pipeline
+Generates labeled training data from Gazebo simulation
+"""
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, CameraInfo
+from geometry_msgs.msg import Pose
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+import json
+import os
+from datetime import datetime
+import yaml
+
+class SyntheticDataGenerator(Node):
+    def __init__(self):
+        super().__init__('synthetic_data_generator')
+
+        self.bridge = CvBridge()
+        self.data_counter = 0
+        self.dataset_path = '/tmp/synthetic_dataset'
+
+        # Create dataset directory
+        os.makedirs(self.dataset_path, exist_ok=True)
+        os.makedirs(os.path.join(self.dataset_path, 'images'), exist_ok=True)
+        os.makedirs(os.path.join(self.dataset_path, 'labels'), exist_ok=True)
+
+        # Subscribers
+        self.image_sub = self.create_subscription(
+            Image, '/camera/image_raw', self.image_callback, 10)
+        self.camera_info_sub = self.create_subscription(
+            CameraInfo, '/camera/camera_info', self.camera_info_callback, 10)
+
+        # Data collection parameters
+        self.collection_rate = 1.0  # Collect data every second
+        self.collection_timer = self.create_timer(self.collection_rate, self.collect_data)
+
+        self.last_image = None
+        self.camera_info = None
+        self.is_collecting = True
+
+        self.get_logger().info('Synthetic data generation pipeline initialized')
+
+    def image_callback(self, msg):
+        """Receive image data from simulation"""
+        try:
+            self.last_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        except Exception as e:
+            self.get_logger().error(f'Error converting image: {e}')
+
+    def camera_info_callback(self, msg):
+        """Receive camera info"""
+        self.camera_info = msg
+
+    def collect_data(self):
+        """Collect and save synthetic data"""
+        if not self.is_collecting or self.last_image is None:
+            return
+
+        try:
+            # Generate unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            image_filename = f"image_{timestamp}_{self.data_counter:06d}.png"
+            label_filename = f"labels_{timestamp}_{self.data_counter:06d}.json"
+
+            # Save image
+            image_path = os.path.join(self.dataset_path, 'images', image_filename)
+            cv2.imwrite(image_path, self.last_image)
+
+            # Generate synthetic labels (example: object detection)
+            labels = self.generate_synthetic_labels()
+
+            # Include camera parameters
+            if self.camera_info:
+                labels['camera_info'] = {
+                    'width': self.camera_info.width,
+                    'height': self.camera_info.height,
+                    'K': list(self.camera_info.k),
+                    'D': list(self.camera_info.d),
+                    'R': list(self.camera_info.r),
+                    'P': list(self.camera_info.p)
+                }
+
+            # Save labels
+            label_path = os.path.join(self.dataset_path, 'labels', label_filename)
+            with open(label_path, 'w') as f:
+                json.dump(labels, f, indent=2)
+
+            self.get_logger().info(f'Saved synthetic data: {image_filename} with {len(labels["objects"])} objects')
+            self.data_counter += 1
+
+        except Exception as e:
+            self.get_logger().error(f'Error collecting data: {e}')
+
+    def generate_synthetic_labels(self):
+        """Generate synthetic labels for the current image"""
+        # This is a simplified example - in practice, you'd use Gazebo's rendering
+        # pipeline to get ground truth segmentation, depth, etc.
+
+        labels = {
+            'timestamp': datetime.now().isoformat(),
+            'frame_id': f'frame_{self.data_counter:06d}',
+            'objects': [],
+            'scene_description': 'Synthetic indoor environment with various objects',
+            'lighting_conditions': 'controlled',
+            'camera_pose': None  # Would be populated from Gazebo state
+        }
+
+        # Example: Generate bounding boxes for objects in the scene
+        # In a real implementation, this would use Gazebo's model states
+        # to generate accurate ground truth
+        num_objects = np.random.randint(1, 5)
+
+        for i in range(num_objects):
+            obj = {
+                'id': i,
+                'class': np.random.choice(['table', 'chair', 'box', 'robot', 'person']),
+                'bbox': {
+                    'x_min': int(np.random.uniform(0, 400)),
+                    'y_min': int(np.random.uniform(0, 300)),
+                    'x_max': int(np.random.uniform(400, 640)),
+                    'y_max': int(np.random.uniform(300, 480))
+                },
+                'confidence': 1.0,  # Perfect confidence in simulation
+                'occluded': bool(np.random.choice([True, False], p=[0.3, 0.7]))
+            }
+            labels['objects'].append(obj)
+
+        return labels
+
+    def start_collection(self):
+        """Start data collection"""
+        self.is_collecting = True
+        self.get_logger().info('Started synthetic data collection')
+
+    def stop_collection(self):
+        """Stop data collection"""
+        self.is_collecting = False
+        self.get_logger().info('Stopped synthetic data collection')
+
+    def generate_dataset_manifest(self):
+        """Generate a manifest file for the dataset"""
+        manifest = {
+            'dataset_name': 'Synthetic Robotics Dataset',
+            'description': 'Synthetic dataset generated from Gazebo simulation',
+            'created': datetime.now().isoformat(),
+            'total_samples': self.data_counter,
+            'image_format': 'PNG',
+            'label_format': 'JSON',
+            'camera_parameters': {
+                'resolution': [640, 480],
+                'fov': '1.089 radians'
+            },
+            'object_classes': ['table', 'chair', 'box', 'robot', 'person'],
+            'domain_randomization_applied': True
+        }
+
+        manifest_path = os.path.join(self.dataset_path, 'dataset_manifest.yaml')
+        with open(manifest_path, 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
+
+        self.get_logger().info(f'Dataset manifest saved to {manifest_path}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    data_generator = SyntheticDataGenerator()
+
+    try:
+        # Run for a specific duration or until interrupted
+        data_generator.start_collection()
+        rclpy.spin(data_generator)
+    except KeyboardInterrupt:
+        data_generator.stop_collection()
+        data_generator.generate_dataset_manifest()
+        data_generator.get_logger().info(f'Collected {data_generator.data_counter} synthetic samples')
+    finally:
+        data_generator.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Domain Randomization Implementation
+
+Domain randomization helps improve sim-to-real transfer by varying environmental parameters:
+
+```python
+#!/usr/bin/env python3
+
+"""
+Domain Randomization Manager
+Randomizes simulation parameters to improve sim-to-real transfer
+"""
+
+import rclpy
+from rclpy.node import Node
+from gazebo_msgs.srv import SetLightProperties, SetModelState
+from gazebo_msgs.msg import ModelState
+from std_msgs.msg import ColorRGBA
+import random
+import numpy as np
+
+class DomainRandomizationManager(Node):
+    def __init__(self):
+        super().__init__('domain_randomization_manager')
+
+        # Services for modifying simulation
+        self.set_light_client = self.create_client(SetLightProperties, '/set_light_properties')
+
+        # Timer for randomization
+        self.randomization_timer = self.create_timer(10.0, self.randomize_environment)
+
+        # Randomization parameters
+        self.light_names = ['sun', 'fill_light']
+        self.randomization_enabled = True
+
+        self.get_logger().info('Domain randomization manager initialized')
+
+    def randomize_environment(self):
+        """Randomize environment parameters"""
+        if not self.randomization_enabled:
+            return
+
+        self.get_logger().info('Randomizing environment parameters')
+
+        # Randomize lighting
+        self.randomize_lighting()
+
+        # Randomize textures/materials (would require model modification)
+        self.randomize_textures()
+
+        # Randomize camera parameters
+        self.randomize_camera_params()
+
+    def randomize_lighting(self):
+        """Randomize lighting conditions"""
+        for light_name in self.light_names:
+            try:
+                # Randomize light color and intensity
+                r = random.uniform(0.7, 1.0)
+                g = random.uniform(0.7, 1.0)
+                b = random.uniform(0.8, 1.0)
+                intensity = random.uniform(0.8, 1.2)
+
+                request = SetLightProperties.Request()
+                request.light_name = light_name
+                request.diffuse = ColorRGBA(r=r, g=g, b=b, a=1.0)
+                request.specular = ColorRGBA(r=r*0.3, g=g*0.3, b=b*0.3, a=1.0)
+                request.attenuation_constant = random.uniform(0.8, 1.2)
+                request.attenuation_linear = random.uniform(0.008, 0.012)
+                request.attenuation_quadratic = random.uniform(0.0008, 0.0012)
+
+                future = self.set_light_client.call_async(request)
+                # Note: In a real implementation, you'd wait for completion
+
+            except Exception as e:
+                self.get_logger().error(f'Error randomizing light {light_name}: {e}')
+
+    def randomize_textures(self):
+        """Randomize surface textures and materials"""
+        # This would typically involve changing SDF model properties
+        # For now, we'll just log that this would happen
+        texture_options = [
+            'concrete', 'wood', 'metal', 'fabric', 'plastic',
+            'tile', 'carpet', 'grass', 'dirt', 'water'
+        ]
+
+        selected_texture = random.choice(texture_options)
+        self.get_logger().info(f'Randomized floor texture to: {selected_texture}')
+
+    def randomize_camera_params(self):
+        """Randomize camera intrinsic parameters"""
+        # This would affect the synthetic data generation
+        camera_params = {
+            'focal_length': random.uniform(250, 300),
+            'principal_point_x': random.uniform(310, 330),
+            'principal_point_y': random.uniform(230, 250),
+            'distortion_coeffs': [
+                random.uniform(-0.1, 0.1),   # k1
+                random.uniform(-0.05, 0.05), # k2
+                random.uniform(-0.01, 0.01), # p1
+                random.uniform(-0.01, 0.01), # p2
+                random.uniform(-0.01, 0.01)  # k3
+            ]
+        }
+
+        self.get_logger().info(f'Randomized camera parameters: {camera_params}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    randomizer = DomainRandomizationManager()
+
+    try:
+        rclpy.spin(randomizer)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        randomizer.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Performance Optimization
+
+Optimizing simulation performance is crucial for real-time applications and large-scale training.
+
+### Simulation Optimization Techniques
+
+```python
+#!/usr/bin/env python3
+
+"""
+Simulation Performance Optimizer
+Monitors and optimizes Gazebo simulation performance
+"""
+
+import rclpy
+from rclpy.node import Node
+from gazebo_msgs.srv import GetPhysicsProperties, SetPhysicsProperties
+from std_msgs.msg import Float64
+import time
+import statistics
+
+class SimulationPerformanceOptimizer(Node):
+    def __init__(self):
+        super().__init__('simulation_performance_optimizer')
+
+        # Services
+        self.get_physics_client = self.create_client(GetPhysicsProperties, '/get_physics_properties')
+        self.set_physics_client = self.create_client(SetPhysicsProperties, '/set_physics_properties')
+
+        # Publishers for monitoring
+        self.real_time_factor_pub = self.create_publisher(Float64, '/gazebo/real_time_factor', 10)
+        self.simulation_step_time_pub = self.create_publisher(Float64, '/gazebo/step_time', 10)
+
+        # Performance monitoring
+        self.performance_history = []
+        self.target_real_time_factor = 1.0
+        self.adaptation_enabled = True
+
+        # Timer for performance monitoring
+        self.monitor_timer = self.create_timer(1.0, self.monitor_performance)
+
+        self.get_logger().info('Simulation performance optimizer initialized')
+
+    def monitor_performance(self):
+        """Monitor simulation performance and adapt parameters"""
+        if not self.adaptation_enabled:
+            return
+
+        # Get current physics properties
+        request = GetPhysicsProperties.Request()
+        future = self.get_physics_client.call_async(request)
+
+        # Process response
+        rclpy.spin_until_future_complete(self, future, timeout_sec=0.1)
+
+        if future.result() is not None:
+            response = future.result()
+            current_rtf = response.current_real_time_factor
+
+            # Publish real-time factor for monitoring
+            rtf_msg = Float64()
+            rtf_msg.data = current_rtf
+            self.real_time_factor_pub.publish(rtf_msg)
+
+            # Store in history
+            self.performance_history.append(current_rtf)
+            if len(self.performance_history) > 10:
+                self.performance_history.pop(0)
+
+            # Calculate average RTF
+            if len(self.performance_history) > 0:
+                avg_rtf = statistics.mean(self.performance_history)
+
+                self.get_logger().info(f'Current RTF: {current_rtf:.3f}, Average RTF: {avg_rtf:.3f}')
+
+                # Adapt physics parameters based on performance
+                if avg_rtf < 0.8:  # Performance is poor
+                    self.optimize_for_performance()
+                elif avg_rtf > 1.2:  # Performance is good, can increase quality
+                    self.optimize_for_quality()
+
+    def optimize_for_performance(self):
+        """Optimize physics parameters for better performance"""
+        self.get_logger().info('Optimizing for performance')
+
+        request = SetPhysicsProperties.Request()
+
+        # Get current properties first
+        current_props = self.get_current_properties()
+        if current_props is None:
+            return
+
+        # Adjust time step (increase for better performance)
+        request.time_step = min(current_props.time_step * 1.2, 0.01)  # Cap at 10ms
+        request.max_step_size = request.time_step
+        request.real_time_update_rate = max(100.0, current_props.real_time_update_rate * 0.8)
+
+        # Adjust solver parameters for performance
+        request.ode_config.sor_pgs_iters = max(20, int(current_props.ode_config.sor_pgs_iters * 0.8))
+        request.ode_config.ode_max_contacts = min(15, current_props.ode_config.ode_max_contacts)
+
+        # Apply changes
+        self.apply_physics_properties(request)
+
+    def optimize_for_quality(self):
+        """Optimize physics parameters for better quality"""
+        self.get_logger().info('Optimizing for quality')
+
+        request = SetPhysicsProperties.Request()
+
+        # Get current properties first
+        current_props = self.get_current_properties()
+        if current_props is None:
+            return
+
+        # Adjust time step (decrease for better accuracy)
+        request.time_step = max(current_props.time_step * 0.8, 0.001)  # Minimum 1ms
+        request.max_step_size = request.time_step
+        request.real_time_update_rate = min(2000.0, current_props.real_time_update_rate * 1.2)
+
+        # Adjust solver parameters for quality
+        request.ode_config.sor_pgs_iters = min(100, int(current_props.ode_config.sor_pgs_iters * 1.2))
+        request.ode_config.ode_max_contacts = max(25, current_props.ode_config.ode_max_contacts)
+
+        # Apply changes
+        self.apply_physics_properties(request)
+
+    def get_current_properties(self):
+        """Get current physics properties"""
+        request = GetPhysicsProperties.Request()
+        future = self.get_physics_client.call_async(request)
+
+        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
+
+        if future.result() is not None:
+            return future.result()
+        else:
+            self.get_logger().error('Failed to get current physics properties')
+            return None
+
+    def apply_physics_properties(self, request):
+        """Apply new physics properties"""
+        # Set gravity
+        request.gravity.x = 0.0
+        request.gravity.y = 0.0
+        request.gravity.z = -9.81
+
+        # Set ODE config defaults
+        request.ode_config.auto_disable_bodies = False
+        request.ode_config.sor_pgs_precon_iters = 2
+        request.ode_config.sor_pgs_w = 1.3
+        request.ode_config.ode_contact_surface_layer = 0.001
+
+        future = self.set_physics_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
+
+        if future.result() is not None:
+            response = future.result()
+            if response.success:
+                self.get_logger().info('Physics properties updated successfully')
+            else:
+                self.get_logger().error(f'Failed to update physics properties: {response.status_message}')
+        else:
+            self.get_logger().error('Failed to call set physics properties service')
+
+def main(args=None):
+    rclpy.init(args=args)
+    optimizer = SimulationPerformanceOptimizer()
+
+    try:
+        rclpy.spin(optimizer)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        optimizer.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Domain Randomization
+
+Domain randomization is a technique that randomizes simulation parameters to improve the transfer of learned behaviors from simulation to reality.
+
+### Implementation of Domain Randomization
+
+```xml
+&lt;?xml version="1.0"?&gt;
+&lt;sdf version="1.7"&gt;
+  &lt;world name="domain_randomized_world"&gt;
+    &lt;!-- Randomized lighting --&gt;
+    &lt;light name="randomized_sun" type="directional"&gt;
+      &lt;pose&gt;0 0 10 0 0 0&lt;/pose&gt;
+      &lt;diffuse&gt;0.8 0.8 0.8 1&lt;/diffuse&gt;
+      &lt;specular&gt;0.2 0.2 0.2 1&lt;/specular&gt;
+      &lt;attenuation&gt;
+        &lt;range&gt;1000&lt;/range&gt;
+        &lt;constant&gt;0.9&lt;/constant&gt;
+        &lt;linear&gt;0.01&lt;/linear&gt;
+        &lt;quadratic&gt;0.001&lt;/quadratic&gt;
+      &lt;/attenuation&gt;
+      &lt;direction&gt;-0.3 0.3 -0.9&lt;/direction&gt;
+    &lt;/light&gt;
+
+    &lt;!-- Randomized physics properties --&gt;
+    &lt;physics type="ode"&gt;
+      &lt;max_step_size&gt;0.001&lt;/max_step_size&gt;
+      &lt;real_time_factor&gt;1&lt;/real_time_factor&gt;
+      &lt;real_time_update_rate&gt;1000&lt;/real_time_update_rate&gt;
+      &lt;gravity&gt;0 0 -9.8&lt;/gravity&gt;
+      &lt;ode&gt;
+        &lt;sor&gt;1.3&lt;/sor&gt;
+        &lt;cfm&gt;1e-06&lt;/cfm&gt;
+        &lt;erp&gt;0.2&lt;/erp&gt;
+        &lt;contact_surface_layer&gt;0.001&lt;/contact_surface_layer&gt;
+        &lt;max_contacts&gt;20&lt;/max_contacts&gt;
+      &lt;/ode&gt;
+    &lt;/physics&gt;
+
+    &lt;!-- Randomized materials --&gt;
+    &lt;scene&gt;
+      &lt;grid&gt;true&lt;/grid&gt;
+      &lt;shadows&gt;true&lt;/shadows&gt;
+      &lt;ambient&gt;0.4 0.4 0.4 1&lt;/ambient&gt;
+      &lt;background&gt;0.7 0.7 0.7 1&lt;/background&gt;
+    &lt;/scene&gt;
+  &lt;/world&gt;
+&lt;/sdf&gt;
+```
+
+## Chapter Summary
+
+This lesson covered advanced simulation techniques that are essential for creating realistic and effective robotics simulations. We explored high-fidelity rendering techniques using Physically Based Rendering (PBR), advanced lighting systems, and custom shaders that create photorealistic environments suitable for training computer vision models.
+
+We examined Unity integration with Gazebo, which allows for enhanced visual quality while maintaining Gazebo's robust physics simulation. The Unity-Gazebo bridge architecture enables bidirectional communication between Unity's rendering engine and Gazebo's physics engine, providing the best of both worlds for simulation.
+
+Advanced physics simulation techniques were covered, including multi-body dynamics configuration, contact property tuning, and solver parameter optimization. These techniques ensure that simulated robots behave realistically and that their interactions with the environment are physically accurate.
+
+Realistic sensor modeling was discussed, with examples of advanced camera, LIDAR, and IMU sensor models that include appropriate noise, distortion, and environmental effects. These realistic sensor models are crucial for sim-to-real transfer, as they more closely match the behavior of real sensors.
+
+Synthetic data generation techniques were presented, including data generation pipelines that create labeled training datasets from simulation. These datasets can be used to train AI models when real-world data is scarce or expensive to collect.
+
+Performance optimization strategies were outlined, including techniques for monitoring simulation performance and adapting parameters to maintain real-time operation while preserving quality. This is particularly important for large-scale training scenarios.
+
+Finally, domain randomization techniques were introduced as a method for improving sim-to-real transfer by varying environmental parameters during training. This helps neural networks learn to be robust to variations they will encounter in the real world.
+
+### Key Takeaways
+
+- High-fidelity rendering with PBR materials and advanced lighting creates photorealistic environments essential for computer vision training
+- Unity integration provides enhanced visual quality while maintaining Gazebo's physics capabilities
+- Advanced physics configuration ensures realistic multi-body dynamics and contact behavior
+- Realistic sensor models with appropriate noise and distortion improve sim-to-real transfer
+- Synthetic data generation pipelines create labeled datasets for AI training
+- Performance optimization maintains real-time operation during complex simulations
+- Domain randomization improves the robustness of learned behaviors when transferring to reality
+
+### Next Steps
+
+With these advanced simulation techniques, you can now create sophisticated simulation environments that closely match real-world conditions. The next step is to integrate these techniques into complete simulation scenarios that can be used for training and testing robotic systems before deployment in the real world.
+
+---
+
+**Continue to [Lesson 3: Chapter Summary](./lesson-3-chapter-summary.mdx)**

@@ -1,0 +1,917 @@
+---
+sidebar_position: 1
+---
+
+# Introduction to Gazebo: Physics Simulation for Physical AI
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Understand the fundamental concepts of physics simulation in robotics
+- Configure and run Gazebo simulation environments
+- Integrate Gazebo with ROS 2 for robot simulation
+- Create and modify robot models for simulation
+- Implement sensor simulation and realistic physics parameters
+- Connect simulated robots with AI agents for training and testing
+
+## What is Gazebo?
+
+### Definition and Purpose
+
+Gazebo is a 3D simulation environment that provides:
+- **Physics Simulation**: Accurate modeling of rigid body dynamics, collisions, and forces
+- **Sensor Simulation**: Realistic simulation of cameras, LiDAR, IMU, GPS, and other sensors
+- **Visual Rendering**: High-quality 3D visualization of environments and robots
+- **Plugin Architecture**: Extensible system for custom sensors, controllers, and environments
+- **ROS Integration**: Seamless integration with ROS and ROS 2 for robot development
+
+### Role in Physical AI Development
+
+Gazebo plays a crucial role in Physical AI development by providing:
+- **Safe Testing Environment**: Test algorithms without risk to physical hardware
+- **Rapid Prototyping**: Quickly iterate on robot designs and control algorithms
+- **Training Ground**: Generate large amounts of training data for AI systems
+- **Reproducible Experiments**: Consistent environments for comparing approaches
+- **Cost-Effective Development**: Reduce need for physical prototypes
+
+## Gazebo Architecture
+
+### Core Components
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   GUI Client    │◄──►│   Gazebo Server  │◄──►│   Physics Engine│
+│   (gzclient)    │    │   (gzserver)     │    │   (ODE/Bullet)  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Visualization │    │   World Models   │    │   Collision     │
+│   & Rendering   │    │   (SDF files)    │    │   Detection     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+### Key Concepts
+
+#### Worlds
+- **Definition**: 3D environments containing robots, objects, and physics properties
+- **Format**: Stored in SDF (Simulation Description Format) files
+- **Components**: Terrain, lighting, physics parameters, static/dynamic objects
+
+#### Models
+- **Definition**: 3D representations of robots, sensors, and objects
+- **Format**: SDF files describing geometry, physics, and plugins
+- **Types**: Static objects, articulated robots, vehicles
+
+#### Plugins
+- **Definition**: Dynamically loaded components extending Gazebo functionality
+- **Types**:
+  - **Sensor Plugins**: Camera, LiDAR, IMU, etc.
+  - **Controller Plugins**: Joint controllers, robot interfaces
+  - **World Plugins**: Environment modifications, custom physics
+  - **GUI Plugins**: Custom visualization and control interfaces
+
+## Installing and Setting Up Gazebo
+
+### Gazebo Garden Installation
+
+```bash
+# For Ubuntu 22.04 (Jammy)
+sudo apt update
+sudo apt install software-properties-common
+sudo add-apt-repository universe
+sudo apt install gz-garden
+```
+
+### ROS 2 Integration Setup
+
+```bash
+# Install ROS 2 Gazebo packages
+sudo apt install ros-humble-gazebo-ros-pkgs
+sudo apt install ros-humble-gazebo-ros-control
+sudo apt install ros-humble-ros-gz
+sudo apt install ros-humble-ros-gz-bridge
+```
+
+### Basic Gazebo Commands
+
+```bash
+# Launch Gazebo with empty world
+gz sim
+
+# Launch with specific world file
+gz sim -r -v 4 empty.sdf  # -r: run simulation, -v 4: verbose level
+
+# Launch with GUI
+gz sim -g
+
+# List available worlds
+ls /usr/share/gazebo/worlds/
+```
+
+## Creating Your First Gazebo World
+
+### Basic World File Structure
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <world name="my_world">
+    <!-- Physics engine -->
+    <physics type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- Lighting -->
+    <light name="sun" type="directional">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.4 0.2 -0.9</direction>
+    </light>
+
+    <!-- Ground plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Sample object -->
+    <model name="box">
+      <pose>0 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1 1 1</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1 1 1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.166667</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.166667</iyy>
+            <iyz>0</iyz>
+            <izz>0.166667</izz>
+          </inertia>
+        </inertial>
+      </link>
+    </model>
+  </world>
+</sdf>
+```
+
+## Robot Model Integration
+
+### Basic Robot Model Structure
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="simple_robot">
+    <!-- Base link -->
+    <link name="chassis">
+      <pose>0 0 0.1 0 0 0</pose>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.5 0.3 0.1</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.5 0.3 0.1</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.8 0.0 1</ambient>
+          <diffuse>0.0 0.8 0.0 1</diffuse>
+        </material>
+      </visual>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>0.004167</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.010417</iyy>
+          <iyz>0</iyz>
+          <izz>0.0125</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- Wheel joints and links -->
+    <joint name="left_wheel_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>left_wheel</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+      </axis>
+      <pose>-0.15 0.2 0 0 0 0</pose>
+    </joint>
+
+    <link name="left_wheel">
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.1</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.1</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.000583</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000583</iyy>
+          <iyz>0</iyz>
+          <izz>0.001</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- Right wheel (similar to left) -->
+    <joint name="right_wheel_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>right_wheel</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+      </axis>
+      <pose>-0.15 -0.2 0 0 0 0</pose>
+    </joint>
+
+    <link name="right_wheel">
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.1</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.1</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.000583</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000583</iyy>
+          <iyz>0</iyz>
+          <izz>0.001</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- Differential drive plugin -->
+    <plugin filename="libignition-gazebo-diff-drive-system.so" name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.4</wheel_separation>
+      <wheel_radius>0.1</wheel_radius>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <tf_topic>tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>chassis</child_frame_id>
+    </plugin>
+  </model>
+</sdf>
+```
+
+## ROS 2 Integration
+
+### Launching Gazebo with ROS 2
+
+```python
+# Python launch file example: gazebo_launch.py
+import os
+from launch import LaunchDescription
+from launch.actions import ExecuteProcess
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+    # Get Gazebo world file
+    world_file = os.path.join(
+        get_package_share_directory('my_robot_simulation'),
+        'worlds',
+        'my_world.sdf'
+    )
+
+    # Launch Gazebo
+    gz_sim = ExecuteProcess(
+        cmd=['gz sim', '-r', world_file],
+        output='screen'
+    )
+
+    # Bridge between Gazebo and ROS 2
+    ros_gz_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
+            '/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan'
+        ],
+        output='screen'
+    )
+
+    return LaunchDescription([
+        gz_sim,
+        ros_gz_bridge
+    ])
+```
+
+### Connecting to Gazebo from ROS 2
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
+import math
+
+class GazeboRobotController(Node):
+    def __init__(self):
+        super().__init__('gazebo_robot_controller')
+
+        # Publishers
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+
+        # Subscribers
+        self.odom_sub = self.create_subscription(
+            Odometry, '/odom', self.odom_callback, 10)
+        self.scan_sub = self.create_subscription(
+            LaserScan, '/scan', self.scan_callback, 10)
+
+        # Robot state
+        self.current_pose = None
+        self.current_twist = None
+        self.latest_scan = None
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.control_loop)
+
+    def odom_callback(self, msg):
+        """Update robot pose and twist from Gazebo"""
+        self.current_pose = msg.pose.pose
+        self.current_twist = msg.twist.twist
+
+    def scan_callback(self, msg):
+        """Update laser scan data from Gazebo"""
+        self.latest_scan = msg
+
+    def control_loop(self):
+        """Main control loop"""
+        if self.latest_scan is not None:
+            cmd = self.avoid_obstacles()
+            self.cmd_vel_pub.publish(cmd)
+
+    def avoid_obstacles(self):
+        """Simple obstacle avoidance"""
+        cmd = Twist()
+
+        if self.latest_scan is None:
+            return cmd
+
+        # Check front ranges (simplified)
+        front_ranges = self.latest_scan.ranges[
+            len(self.latest_scan.ranges)//2-10:len(self.latest_scan.ranges)//2+10
+        ]
+
+        min_front_dist = min(front_ranges) if front_ranges else float('inf')
+
+        if min_front_dist < 0.5:
+            # Too close to obstacle - turn
+            cmd.angular.z = 0.5
+        else:
+            # Move forward
+            cmd.linear.x = 0.3
+
+        return cmd
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = GazeboRobotController()
+
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Advanced Physics Configuration
+
+### Physics Properties
+
+```xml
+<physics type="ode">
+  <!-- Time stepping -->
+  <max_step_size>0.001</max_step_size>  <!-- Simulation time step -->
+  <real_time_factor>1</real_time_factor>  <!-- Real-time vs simulation time -->
+  <real_time_update_rate>1000</real_time_update_rate>
+
+  <!-- Solver parameters -->
+  <ode>
+    <solver>
+      <type>quick</type>  <!-- or "world" -->
+      <iters>10</iters>   <!-- Solver iterations -->
+      <sor>1.3</sor>      <!-- Successive Over Relaxation parameter -->
+    </solver>
+
+    <!-- Constraints -->
+    <constraints>
+      <cfm>0</cfm>        <!-- Constraint Force Mixing -->
+      <erp>0.2</erp>      <!-- Error Reduction Parameter -->
+      <contact_max_correcting_vel>100</contact_max_correcting_vel>
+      <contact_surface_layer>0.001</contact_surface_layer>
+    </constraints>
+  </ode>
+</physics>
+```
+
+### Friction and Contact Parameters
+
+```xml
+<link name="wheel">
+  <collision name="collision">
+    <geometry>
+      <cylinder>
+        <radius>0.1</radius>
+        <length>0.05</length>
+      </cylinder>
+    </geometry>
+    <surface>
+      <friction>
+        <ode>
+          <mu>1.0</mu>        <!-- Primary friction coefficient -->
+          <mu2>1.0</mu2>      <!-- Secondary friction coefficient -->
+          <slip1>0.0</slip1>  <!-- Slip in primary direction -->
+          <slip2>0.0</slip2>  <!-- Slip in secondary direction -->
+        </ode>
+      </friction>
+      <bounce>
+        <restitution_coefficient>0.01</restitution_coefficient>
+        <threshold>100000</threshold>
+      </bounce>
+      <contact>
+        <ode>
+          <soft_cfm>0.0</soft_cfm>
+          <soft_erp>0.2</soft_erp>
+          <kp>1000000000000.0</kp>  <!-- Contact stiffness -->
+          <kd>1.0</kd>               <!-- Damping coefficient -->
+          <max_vel>100.0</max_vel>
+          <min_depth>0.001</min_depth>
+        </ode>
+      </contact>
+    </surface>
+  </collision>
+</link>
+```
+
+## Sensor Simulation
+
+### Camera Sensor
+
+```xml
+<sensor name="camera" type="camera">
+  <always_on>true</always_on>
+  <update_rate>30</update_rate>
+  <visualize>true</visualize>
+  <topic>camera/image_raw</topic>
+  <camera name="head">
+    <horizontal_fov>1.047</horizontal_fov>  <!-- 60 degrees -->
+    <image>
+      <width>640</width>
+      <height>480</height>
+      <format>R8G8B8</format>
+    </image>
+    <clip>
+      <near>0.1</near>
+      <far>10.0</far>
+    </clip>
+    <noise>
+      <type>gaussian</type>
+      <mean>0.0</mean>
+      <stddev>0.007</stddev>
+    </noise>
+  </camera>
+</sensor>
+```
+
+### LiDAR Sensor
+
+```xml
+<sensor name="lidar" type="gpu_lidar">  <!-- or "ray" for CPU-based -->
+  <always_on>true</always_on>
+  <update_rate>10</update_rate>
+  <visualize>true</visualize>
+  <topic>scan</topic>
+  <ray>
+    <scan>
+      <horizontal>
+        <samples>720</samples>
+        <resolution>1</resolution>
+        <min_angle>-1.570796</min_angle>  <!-- -90 degrees -->
+        <max_angle>1.570796</max_angle>   <!-- 90 degrees -->
+      </horizontal>
+      <vertical>
+        <samples>1</samples>
+        <resolution>1</resolution>
+        <min_angle>0</min_angle>
+        <max_angle>0</max_angle>
+      </vertical>
+    </scan>
+    <range>
+      <min>0.1</min>
+      <max>30.0</max>
+      <resolution>0.01</resolution>
+    </range>
+    <noise>
+      <type>gaussian</type>
+      <mean>0.0</mean>
+      <stddev>0.01</stddev>
+    </noise>
+  </ray>
+</sensor>
+```
+
+### IMU Sensor
+
+```xml
+<sensor name="imu" type="imu">
+  <always_on>true</always_on>
+  <update_rate>100</update_rate>
+  <topic>imu/data</topic>
+  <visualize>false</visualize>
+  <imu>
+    <angular_velocity>
+      <x>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </x>
+      <y>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </y>
+      <z>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </z>
+    </angular_velocity>
+    <linear_acceleration>
+      <x>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.017</stddev>
+        </noise>
+      </x>
+      <y>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.017</stddev>
+        </noise>
+      </y>
+      <z>
+        <noise type="gaussian">
+          <mean>0.0</mean>
+          <stddev>0.017</stddev>
+        </noise>
+      </z>
+    </linear_acceleration>
+  </imu>
+</sensor>
+```
+
+## Environment Simulation
+
+### Terrain and Outdoor Environments
+
+```xml
+<model name="uneven_terrain">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <heightmap>
+          <uri>file://meshes/terrain.png</uri>
+          <size>100 100 10</size>  <!-- x, y, z scale -->
+          <pos>0 0 0</pos>
+        </heightmap>
+      </geometry>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <heightmap>
+          <uri>file://meshes/terrain.png</uri>
+          <size>100 100 10</size>
+        </heightmap>
+      </geometry>
+    </visual>
+  </link>
+</model>
+```
+
+### Weather and Atmospheric Effects
+
+```xml
+<world name="outdoor_world">
+  <!-- Atmosphere -->
+  <atmosphere type="adiabatic">
+    <temperature>288.15</temperature>
+    <pressure>101325</pressure>
+  </atmosphere>
+
+  <!-- Gravity -->
+  <gravity>0 0 -9.8</gravity>
+
+  <!-- Wind -->
+  <wind>
+    <linear_velocity>0.5 0 0</linear_velocity>
+  </wind>
+
+  <!-- Magnetic field -->
+  <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+</world>
+```
+
+## AI Training Integration
+
+### Reinforcement Learning Environment
+
+```python
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+
+class GazeboNavigationEnv(gym.Env):
+    def __init__(self):
+        super(GazeboNavigationEnv, self).__init__()
+
+        # Initialize ROS
+        rclpy.init()
+        self.node = Node('gazebo_rl_env')
+
+        # Subscriptions
+        self.scan_sub = self.node.create_subscription(
+            LaserScan, '/scan', self.scan_callback, 10)
+        self.odom_sub = self.node.create_subscription(
+            Odometry, '/odom', self.odom_callback, 10)
+
+        # Publishers
+        self.cmd_pub = self.node.create_publisher(Twist, '/cmd_vel', 10)
+
+        # Action space: [linear_vel, angular_vel]
+        self.action_space = spaces.Box(
+            low=np.array([-0.5, -1.0]),
+            high=np.array([0.5, 1.0]),
+            dtype=np.float32
+        )
+
+        # Observation space: laser scan (20 beams) + position + velocity
+        self.observation_space = spaces.Box(
+            low=np.array([-np.inf] * 24),  # 20 scan + 2 pos + 2 vel
+            high=np.array([np.inf] * 24),
+            dtype=np.float32
+        )
+
+        # State
+        self.latest_scan = None
+        self.current_pose = None
+        self.current_twist = None
+
+    def scan_callback(self, msg):
+        self.latest_scan = msg
+
+    def odom_callback(self, msg):
+        self.current_pose = msg.pose.pose
+        self.current_twist = msg.twist.twist
+
+    def step(self, action):
+        # Execute action
+        cmd = Twist()
+        cmd.linear.x = float(action[0])
+        cmd.angular.z = float(action[1])
+        self.cmd_pub.publish(cmd)
+
+        # Wait for next observation
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        # Get observation
+        obs = self.get_observation()
+
+        # Calculate reward
+        reward = self.calculate_reward()
+
+        # Check if done
+        terminated = self.is_collision()
+        truncated = False  # Timeout or other termination condition
+
+        info = {}  # Additional info
+
+        return obs, reward, terminated, truncated, info
+
+    def get_observation(self):
+        if self.latest_scan is None:
+            scan_data = np.ones(20) * 10.0  # Default max range
+        else:
+            ranges = self.latest_scan.ranges
+            # Take 20 evenly spaced readings
+            step = len(ranges) // 20
+            scan_data = np.array([min(r, 10.0) for r in ranges[::step][:20]])
+
+        # Position and velocity data
+        if self.current_pose and self.current_twist:
+            pos_data = np.array([
+                self.current_pose.position.x,
+                self.current_pose.position.y
+            ])
+            vel_data = np.array([
+                self.current_twist.linear.x,
+                self.current_twist.angular.z
+            ])
+        else:
+            pos_data = np.zeros(2)
+            vel_data = np.zeros(2)
+
+        return np.concatenate([scan_data, pos_data, vel_data])
+
+    def calculate_reward(self):
+        if self.current_pose is None or self.current_twist is None:
+            return 0.0
+
+        reward = 0.0
+
+        # Reward for forward movement
+        if self.current_twist.linear.x > 0.2:
+            reward += 0.1
+
+        # Penalty for angular movement (encourage straight line)
+        reward -= abs(self.current_twist.angular.z) * 0.05
+
+        # Penalty for being too close to obstacles
+        if self.latest_scan:
+            min_range = min(self.latest_scan.ranges) if self.latest_scan.ranges else 10.0
+            if min_range < 0.3:
+                reward -= 1.0
+            elif min_range < 0.5:
+                reward -= 0.1
+
+        return reward
+
+    def is_collision(self):
+        if self.latest_scan:
+            min_range = min(self.latest_scan.ranges) if self.latest_scan.ranges else 10.0
+            return min_range < 0.2  # Collision threshold
+        return False
+
+    def reset(self, seed=None):
+        # Reset robot position in Gazebo (would require service call)
+        obs = self.get_observation()
+        return obs, {}
+
+    def close(self):
+        self.node.destroy_node()
+        rclpy.shutdown()
+```
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Gazebo provides a comprehensive simulation environment that bridges the gap between digital AI algorithms and physical robot realities. By accurately modeling physics, sensors, and environments, Gazebo enables safe, cost-effective development and testing of Physical AI systems before deployment on real hardware. The integration with ROS 2 creates a seamless pipeline from simulation to reality.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Create a simple Gazebo world with obstacles and a differential drive robot
+2. Implement a basic navigation algorithm that avoids obstacles in simulation
+3. Add sensors to your robot model and connect them to ROS 2 topics
+4. Experiment with different physics parameters to see their effect on robot behavior
+
+</div>
+
+## Chapter Summary
+
+This lesson introduced Gazebo as a critical tool for Physical AI development, covering its architecture, setup, and integration with ROS 2. We explored how to create simulation environments, model robots with accurate physics properties, and simulate various sensors. The ability to connect simulated robots with AI agents provides a powerful platform for developing and testing Physical AI systems in a safe, controlled environment before real-world deployment.
+
+## Exercises
+
+1. Create a custom Gazebo world with a complex environment for robot navigation
+2. Implement a robot model with multiple sensors (camera, LiDAR, IMU) in simulation
+3. Develop a simple AI controller that navigates the robot in the simulated environment
+4. Experiment with different physics parameters to understand their impact on robot behavior
+
+## References
+
+- Gazebo Documentation: https://gazebosim.org/docs
+- ROS 2 Gazebo Integration: https://github.com/ros-simulation/gazebo_ros_pkgs
+- Simulation Best Practices: https://classic.gazebosim.org/tutorials?cat=simulation
+- Physics Simulation in Robotics: https://arxiv.org/abs/2008.09588
+
+## Next Steps
+
+In the next lesson, we'll explore advanced simulation techniques including Unity integration, sensor simulation, and high-fidelity rendering for creating photorealistic digital twins of physical robotic systems.

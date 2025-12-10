@@ -1,0 +1,8 @@
+{
+  "label": "Module 6: Humanoid Robot Control",
+  "position": 6,
+  "link": {
+    "type": "generated-index",
+    "description": "Full humanoid control, bipedal locomotion, and embodiment challenges"
+  }
+}

@@ -1,0 +1,997 @@
+---
+sidebar_position: 1
+---
+
+# Python Agents Integration with ROS Controllers
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Integrate Python-based AI agents with ROS 2 control systems
+- Implement communication between Python agents and ROS controllers
+- Design agent-environment interfaces using ROS topics and services
+- Create reactive and deliberative control architectures using Python agents
+- Implement learning and adaptation mechanisms in robotic systems
+
+## Introduction to Python Agents in Robotics
+
+### What Are Python Agents?
+
+In the context of robotics and ROS 2, Python agents are software entities that:
+- **Perceive** their environment through sensor data published on ROS topics
+- **Reason** about the state of the world using AI algorithms
+- **Act** by sending commands to ROS controllers through topics, services, or actions
+- **Learn** from experience to improve their performance over time
+
+### Agent Architecture in ROS 2
+
+```
+[Environment] → [Sensors] → [ROS Topics] → [Python Agent] → [ROS Commands] → [Actuators] → [Environment]
+                    ↑                                    ↓
+              [Sensor Data]                        [Action Commands]
+```
+
+### Benefits of Python for Agent Development
+
+#### Rich AI Ecosystem
+- **Machine Learning**: TensorFlow, PyTorch, scikit-learn
+- **Reinforcement Learning**: Stable-Baselines3, Ray RLlib
+- **Planning**: NetworkX, Python-SAT
+- **Computer Vision**: OpenCV, PIL, torchvision
+
+#### Rapid Prototyping
+- **Interactive Development**: Jupyter notebooks, REPL
+- **Fast Iteration**: Dynamic typing, interpreted execution
+- **Extensive Libraries**: Pre-built solutions for common problems
+
+#### ROS 2 Integration
+- **Native Support**: First-class Python client library (rclpy)
+- **Message Generation**: Automatic Python bindings for custom messages
+- **Tool Integration**: RViz, rqt, ros2cli tools work seamlessly
+
+## Basic Agent Implementation Pattern
+
+### Simple Reactive Agent
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from std_msgs.msg import String
+
+class ReactiveAgent(Node):
+    def __init__(self):
+        super().__init__('reactive_agent')
+
+        # Subscriptions for sensor data
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+
+        # Publisher for robot commands
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Publisher for agent status
+        self.status_pub = self.create_publisher(String, 'agent_status', 10)
+
+        # Agent state
+        self.latest_scan = None
+        self.latest_odom = None
+        self.safety_distance = 0.5  # meters
+
+        # Control loop timer
+        self.control_timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
+
+    def laser_callback(self, msg):
+        self.latest_scan = msg
+
+    def odom_callback(self, msg):
+        self.latest_odom = msg
+
+    def control_loop(self):
+        if self.latest_scan is not None:
+            cmd = self.compute_reactive_control()
+            self.cmd_pub.publish(cmd)
+
+    def compute_reactive_control(self):
+        """Simple obstacle avoidance based on laser scan"""
+        cmd = Twist()
+
+        if self.latest_scan is None:
+            return cmd
+
+        # Find minimum distance in front of robot
+        front_scan = self.get_front_scan_ranges()
+        min_distance = min(front_scan) if front_scan else float('inf')
+
+        if min_distance < self.safety_distance:
+            # Too close to obstacle - turn
+            cmd.angular.z = 0.5
+            cmd.linear.x = 0.0
+            self.status_pub.publish(String(data='Avoiding obstacle'))
+        else:
+            # Clear path - move forward
+            cmd.linear.x = 0.3
+            cmd.angular.z = 0.0
+            self.status_pub.publish(String(data='Moving forward'))
+
+        return cmd
+
+    def get_front_scan_ranges(self):
+        """Extract front-facing laser ranges"""
+        if not self.latest_scan:
+            return []
+
+        # Get ranges from -30 to +30 degrees (front 60-degree sector)
+        ranges = self.latest_scan.ranges
+        angle_min = self.latest_scan.angle_min
+        angle_increment = self.latest_scan.angle_increment
+
+        front_ranges = []
+        for i, range_val in enumerate(ranges):
+            angle = angle_min + i * angle_increment
+            if -0.52 < angle < 0.52:  # Approximately -30 to +30 degrees
+                if self.latest_scan.range_min <= range_val <= self.latest_scan.range_max:
+                    front_ranges.append(range_val)
+
+        return front_ranges
+
+def main(args=None):
+    rclpy.init(args=args)
+    agent = ReactiveAgent()
+
+    try:
+        rclpy.spin(agent)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        agent.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Advanced Agent Architectures
+
+### Deliberative Agent with Planning
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped, Twist
+from nav_msgs.msg import OccupancyGrid, Path
+from your_package.action import NavigateToPose
+from rclpy.action import ActionClient
+import numpy as np
+from scipy.spatial import KDTree
+
+class DeliberativeAgent(Node):
+    def __init__(self):
+        super().__init__('deliberative_agent')
+
+        # Action client for navigation
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+
+        # Subscriptions
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, 'map', self.map_callback, 10)
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+
+        # Publishers
+        self.goal_pub = self.create_publisher(PoseStamped, 'goal', 10)
+        self.path_pub = self.create_publisher(Path, 'global_plan', 10)
+
+        # Agent state
+        self.map_data = None
+        self.current_pose = None
+        self.goals = []  # Queue of goals to visit
+        self.is_navigating = False
+
+        # Planning parameters
+        self.goal_tolerance = 0.5
+        self.replan_distance = 1.0
+
+        # Main control timer
+        self.control_timer = self.create_timer(0.5, self.control_loop)
+
+    def map_callback(self, msg):
+        self.map_data = msg
+        self.get_logger().info('Map received')
+
+    def odom_callback(self, msg):
+        self.current_pose = msg.pose.pose
+
+    def control_loop(self):
+        if self.current_pose is None or self.map_data is None:
+            return
+
+        if not self.is_navigating and self.goals:
+            # Need to navigate to next goal
+            next_goal = self.goals[0]
+            if self.is_close_to_goal(next_goal):
+                # Reached current goal, remove it
+                self.goals.pop(0)
+                self.get_logger().info('Reached goal, moving to next')
+            else:
+                # Navigate to current goal
+                self.navigate_to_goal(next_goal)
+
+    def is_close_to_goal(self, goal):
+        if self.current_pose is None:
+            return False
+
+        dx = goal.pose.position.x - self.current_pose.position.x
+        dy = goal.pose.position.y - self.current_pose.position.y
+        distance = (dx*dx + dy*dy)**0.5
+        return distance < self.goal_tolerance
+
+    def navigate_to_goal(self, goal_pose):
+        if not self.nav_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().error('Navigation server not available')
+            return
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = goal_pose
+
+        self.nav_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.navigation_feedback
+        )
+        self.is_navigating = True
+
+    def navigation_feedback(self, feedback_msg):
+        self.get_logger().info(f'Navigation progress: {feedback_msg.feedback.current_state}')
+
+    def add_goal(self, x, y, theta=0.0):
+        """Add a goal to the queue"""
+        goal = PoseStamped()
+        goal.header.frame_id = 'map'
+        goal.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.position.x = x
+        goal.pose.position.y = y
+        goal.pose.orientation = self.euler_to_quaternion(0, 0, theta)
+
+        self.goals.append(goal)
+        self.get_logger().info(f'Added goal: ({x}, {y})')
+
+    def euler_to_quaternion(self, roll, pitch, yaw):
+        """Convert Euler angles to quaternion"""
+        import math
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+
+        q = Quaternion()
+        q.w = cr * cp * cy + sr * sp * sy
+        q.x = sr * cp * cy - cr * sp * sy
+        q.y = cr * sp * cy + sr * cp * sy
+        q.z = cr * cp * sy - sr * sp * cy
+        return q
+```
+
+### Learning Agent with Reinforcement Learning
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist, Pose
+from std_msgs.msg import Float32
+import torch
+import torch.nn as nn
+import numpy as np
+
+class DQNNetwork(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(DQNNetwork, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, output_size)
+        )
+
+    def forward(self, x):
+        return self.network(x)
+
+class LearningAgent(Node):
+    def __init__(self):
+        super().__init__('learning_agent')
+
+        # Subscriptions
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+
+        # Publishers
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.reward_pub = self.create_publisher(Float32, 'agent_reward', 10)
+
+        # Agent state
+        self.latest_scan = None
+        self.latest_odom = None
+        self.current_state = None
+        self.previous_state = None
+        self.previous_action = None
+        self.episode_reward = 0.0
+
+        # Learning parameters
+        self.state_size = 10  # Reduced laser scan readings
+        self.action_size = 4  # 4 discrete actions: forward, turn left, turn right, stop
+        self.learning_rate = 0.001
+        self.epsilon = 0.1  # Exploration rate
+        self.gamma = 0.95   # Discount factor
+
+        # Neural networks
+        self.q_network = DQNNetwork(self.state_size, self.action_size)
+        self.target_network = DQNNetwork(self.state_size, self.action_size)
+        self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.learning_rate)
+
+        # Experience replay buffer (simplified)
+        self.replay_buffer = []
+        self.buffer_size = 10000
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.control_loop)
+
+    def laser_callback(self, msg):
+        self.latest_scan = msg
+
+    def odom_callback(self, msg):
+        self.latest_odom = msg
+
+    def get_state(self):
+        """Convert laser scan to state representation"""
+        if not self.latest_scan:
+            return np.zeros(self.state_size)
+
+        # Sample 10 readings from the front 180-degree field of view
+        ranges = self.latest_scan.ranges
+        step = len(ranges) // self.state_size
+        state = []
+
+        for i in range(0, len(ranges), step):
+            if i < len(ranges):
+                # Normalize distance to [0, 1]
+                distance = min(ranges[i], self.latest_scan.range_max)
+                normalized_distance = distance / self.latest_scan.range_max
+                state.append(normalized_distance)
+
+        return np.array(state[:self.state_size])
+
+    def select_action(self, state):
+        """Epsilon-greedy action selection"""
+        if np.random.random() < self.epsilon:
+            # Explore: random action
+            return np.random.randint(0, self.action_size)
+        else:
+            # Exploit: best action from Q-network
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            q_values = self.q_network(state_tensor)
+            return q_values.argmax().item()
+
+    def get_action_command(self, action):
+        """Convert discrete action to Twist command"""
+        cmd = Twist()
+
+        if action == 0:  # Move forward
+            cmd.linear.x = 0.3
+            cmd.angular.z = 0.0
+        elif action == 1:  # Turn left
+            cmd.linear.x = 0.1
+            cmd.angular.z = 0.3
+        elif action == 2:  # Turn right
+            cmd.linear.x = 0.1
+            cmd.angular.z = -0.3
+        elif action == 3:  # Stop
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+
+        return cmd
+
+    def calculate_reward(self, action, state, next_state):
+        """Calculate reward based on state transition"""
+        reward = 0.0
+
+        # Positive reward for moving forward safely
+        if action == 0:  # Moving forward
+            min_distance = min(state[:5]) if len(state) >= 5 else 1.0
+            if min_distance > 0.3:  # Safe distance
+                reward += 0.1
+
+        # Negative reward for getting too close to obstacles
+        min_distance = min(state) if len(state) > 0 else 1.0
+        if min_distance < 0.2:
+            reward -= 1.0
+        elif min_distance < 0.4:
+            reward -= 0.1
+
+        # Small time penalty to encourage efficiency
+        reward -= 0.01
+
+        return reward
+
+    def control_loop(self):
+        if self.latest_scan is None:
+            return
+
+        # Get current state
+        current_state = self.get_state()
+
+        # Select action
+        action = self.select_action(current_state)
+
+        # Execute action
+        cmd = self.get_action_command(action)
+        self.cmd_pub.publish(cmd)
+
+        # Calculate reward
+        if self.current_state is not None:
+            reward = self.calculate_reward(self.previous_action, self.previous_state, current_state)
+            self.reward_pub.publish(Float32(data=reward))
+            self.episode_reward += reward
+
+            # Store experience for learning
+            if self.previous_state is not None:
+                self.store_experience(self.previous_state, self.previous_action, reward, current_state)
+
+            # Update networks (simplified)
+            self.train_network()
+
+        # Update state tracking
+        self.previous_state = self.current_state
+        self.previous_action = action
+        self.current_state = current_state
+
+    def store_experience(self, state, action, reward, next_state):
+        """Store experience in replay buffer"""
+        experience = (state, action, reward, next_state)
+        self.replay_buffer.append(experience)
+
+        if len(self.replay_buffer) > self.buffer_size:
+            self.replay_buffer.pop(0)
+
+    def train_network(self):
+        """Train the Q-network (simplified implementation)"""
+        if len(self.replay_buffer) < 32:  # Batch size
+            return
+
+        # Sample random batch from replay buffer
+        batch = np.random.choice(len(self.replay_buffer), 32, replace=False)
+
+        # Simplified training step
+        # In a real implementation, you would:
+        # 1. Extract states, actions, rewards, next_states from batch
+        # 2. Calculate target Q-values
+        # 3. Compute loss and update network
+        pass
+
+def main(args=None):
+    rclpy.init(args=args)
+    agent = LearningAgent()
+
+    try:
+        rclpy.spin(agent)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        agent.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Agent-Environment Interface Design
+
+### Sensor Integration Patterns
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan, Image, Imu, JointState
+from geometry_msgs.msg import Twist
+from std_msgs.msg import Header
+import cv2
+from cv_bridge import CvBridge
+import numpy as np
+
+class MultiSensorAgent(Node):
+    def __init__(self):
+        super().__init__('multi_sensor_agent')
+
+        # Initialize sensor bridge
+        self.cv_bridge = CvBridge()
+
+        # Multiple sensor subscriptions
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+        self.camera_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.camera_callback, 10)
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, 10)
+        self.joint_sub = self.create_subscription(
+            JointState, 'joint_states', self.joint_callback, 10)
+
+        # Command publisher
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Agent state for all sensors
+        self.sensors = {
+            'laser': {'data': None, 'timestamp': None},
+            'camera': {'data': None, 'timestamp': None},
+            'imu': {'data': None, 'timestamp': None},
+            'joints': {'data': None, 'timestamp': None}
+        }
+
+        # Synchronization timer
+        self.sync_timer = self.create_timer(0.05, self.process_synchronized_data)  # 20 Hz
+
+    def laser_callback(self, msg):
+        self.sensors['laser']['data'] = msg
+        self.sensors['laser']['timestamp'] = msg.header.stamp
+
+    def camera_callback(self, msg):
+        try:
+            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.sensors['camera']['data'] = cv_image
+            self.sensors['camera']['timestamp'] = msg.header.stamp
+        except Exception as e:
+            self.get_logger().error(f'Camera callback error: {e}')
+
+    def imu_callback(self, msg):
+        self.sensors['imu']['data'] = msg
+        self.sensors['imu']['timestamp'] = msg.header.stamp
+
+    def joint_callback(self, msg):
+        self.sensors['joints']['data'] = msg
+        self.sensors['joints']['timestamp'] = msg.header.stamp
+
+    def process_synchronized_data(self):
+        """Process synchronized sensor data"""
+        # Check if we have data from all sensors
+        if all(sensor['data'] is not None for sensor in self.sensors.values()):
+            # Check timestamp synchronization (simplified)
+            timestamps = [sensor['timestamp'] for sensor in self.sensors.values()]
+            time_diffs = [abs((timestamps[i].nanosec - timestamps[0].nanosec)/1e9)
+                         for i in range(1, len(timestamps))]
+
+            if all(diff < 0.1 for diff in time_diffs):  # 100ms tolerance
+                # Process synchronized data
+                agent_input = self.pack_sensor_data()
+                agent_output = self.run_agent_logic(agent_input)
+                self.execute_agent_output(agent_output)
+
+    def pack_sensor_data(self):
+        """Pack all sensor data into a unified format"""
+        return {
+            'laser_ranges': self.sensors['laser']['data'].ranges if self.sensors['laser']['data'] else [],
+            'camera_image': self.sensors['camera']['data'],
+            'imu_orientation': self.sensors['imu']['data'].orientation if self.sensors['imu']['data'] else None,
+            'joint_positions': self.sensors['joints']['data'].position if self.sensors['joints']['data'] else []
+        }
+
+    def run_agent_logic(self, sensor_data):
+        """Implement agent decision logic"""
+        # Example: Simple behavior based on multiple sensors
+        cmd = Twist()
+
+        # Process laser data for obstacle avoidance
+        if sensor_data['laser_ranges']:
+            front_distances = sensor_data['laser_ranges'][len(sensor_data['laser_ranges'])//2-10:len(sensor_data['laser_ranges'])//2+10]
+            min_front_dist = min(front_distances) if front_distances else float('inf')
+
+            if min_front_dist < 0.5:
+                cmd.angular.z = 0.5  # Turn away from obstacle
+            else:
+                cmd.linear.x = 0.3  # Move forward
+
+        # Process camera data for visual features (simplified)
+        if sensor_data['camera_image'] is not None:
+            # Example: Detect if there's a clear path ahead
+            # (This is a simplified example - real computer vision would be more complex)
+            height, width = sensor_data['camera_image'].shape[:2]
+            center_region = sensor_data['camera_image'][height//2-50:height//2+50, width//2-50:width//2+50]
+
+            # Simple brightness check to detect obstacles
+            avg_brightness = np.mean(center_region)
+            if avg_brightness < 50:  # Dark region might be obstacle
+                cmd.angular.z = 0.3
+
+        return cmd
+
+    def execute_agent_output(self, cmd):
+        """Execute the agent's decision"""
+        self.cmd_pub.publish(cmd)
+```
+
+## Controller Integration Patterns
+
+### ROS 2 Control Integration
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
+from sensor_msgs.msg import JointState
+from control_msgs.msg import JointTrajectoryControllerState
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from rclpy.action import ActionClient
+from control_msgs.action import FollowJointTrajectory
+
+class ControlAgent(Node):
+    def __init__(self):
+        super().__init__('control_agent')
+
+        # For joint trajectory control
+        self.trajectory_pub = self.create_publisher(
+            JointTrajectory, 'joint_trajectory', 10)
+
+        # For position control
+        self.position_pub = self.create_publisher(
+            Float64MultiArray, 'position_commands', 10)
+
+        # Action client for trajectory execution
+        self.trajectory_client = ActionClient(
+            self, FollowJointTrajectory, 'joint_trajectory_controller/follow_joint_trajectory')
+
+        # Joint state feedback
+        self.joint_state_sub = self.create_subscription(
+            JointState, 'joint_states', self.joint_state_callback, 10)
+
+        # Agent state
+        self.joint_names = ['joint1', 'joint2', 'joint3']  # Example joint names
+        self.current_joint_positions = {}
+        self.desired_positions = {}
+
+        # Control timer
+        self.control_timer = self.create_timer(0.02, self.control_loop)  # 50 Hz
+
+    def joint_state_callback(self, msg):
+        """Update current joint positions"""
+        for i, name in enumerate(msg.name):
+            if i < len(msg.position):
+                self.current_joint_positions[name] = msg.position[i]
+
+    def control_loop(self):
+        """Main control loop"""
+        # Calculate desired positions based on agent logic
+        self.calculate_desired_positions()
+
+        # Execute control commands
+        self.execute_position_control()
+
+    def calculate_desired_positions(self):
+        """Calculate desired joint positions based on task"""
+        # Example: Simple periodic movement
+        import math
+        time_sec = self.get_clock().now().nanoseconds / 1e9
+
+        for i, joint_name in enumerate(self.joint_names):
+            # Create oscillating pattern for each joint
+            amplitude = 0.5
+            frequency = 0.5
+            phase = i * math.pi / 3  # Phase offset for each joint
+
+            desired_pos = amplitude * math.sin(2 * math.pi * frequency * time_sec + phase)
+            self.desired_positions[joint_name] = desired_pos
+
+    def execute_position_control(self):
+        """Execute position control commands"""
+        # Create position command message
+        pos_cmd = Float64MultiArray()
+        pos_cmd.data = [self.desired_positions.get(name, 0.0) for name in self.joint_names]
+
+        self.position_pub.publish(pos_cmd)
+
+    def execute_trajectory(self, trajectory_points):
+        """Execute a joint trajectory"""
+        if not self.trajectory_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().error('Trajectory server not available')
+            return
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory = JointTrajectory()
+        goal.trajectory.joint_names = self.joint_names
+        goal.trajectory.points = trajectory_points
+
+        self.trajectory_client.send_goal_async(goal)
+
+    def create_trajectory_point(self, positions, time_from_start_sec):
+        """Create a trajectory point"""
+        point = JointTrajectoryPoint()
+        point.positions = positions
+        point.time_from_start.sec = int(time_from_start_sec)
+        point.time_from_start.nanosec = int((time_from_start_sec - int(time_from_start_sec)) * 1e9)
+        return point
+```
+
+## Advanced Integration Techniques
+
+### Behavior Trees with ROS 2
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
+from your_package.action import NavigateToPose, PickObject, PlaceObject
+from rclpy.action import ActionClient
+import py_trees
+
+class NavigationBehavior(py_trees.behaviour.Behaviour):
+    def __init__(self, name, node, target_pose):
+        super().__init__(name)
+        self.node = node
+        self.target_pose = target_pose
+        self.nav_client = ActionClient(node, NavigateToPose, 'navigate_to_pose')
+        self.feedback = None
+
+    def initialise(self):
+        self.node.get_logger().info(f'Navigating to {self.target_pose.pose.position.x}, {self.target_pose.pose.position.y}')
+
+    def update(self):
+        if not self.nav_client.wait_for_server(timeout_sec=1.0):
+            self.node.get_logger().error('Navigation server not available')
+            return py_trees.common.Status.FAILURE
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = self.target_pose
+
+        self.nav_future = self.nav_client.send_goal_async(goal_msg)
+        self.nav_future.add_done_callback(self.goal_response_callback)
+
+        return py_trees.common.Status.RUNNING
+
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        if goal_handle.accepted:
+            self.node.get_logger().info('Navigation goal accepted')
+            self.get_result_future = goal_handle.get_result_async()
+            self.get_result_future.add_done_callback(self.get_result_callback)
+
+    def get_result_callback(self, future):
+        result = future.result().result
+        if result.success:
+            self.feedback = result.message
+            self.node.get_logger().info('Navigation completed successfully')
+            self.feedback_status = py_trees.common.Status.SUCCESS
+        else:
+            self.node.get_logger().info('Navigation failed')
+            self.feedback_status = py_trees.common.Status.FAILURE
+
+    def terminate(self, new_status):
+        pass
+
+class RobotAgentWithBT(Node):
+    def __init__(self):
+        super().__init__('robot_agent_bt')
+
+        # Create behavior tree
+        self.setup_behavior_tree()
+
+        # Setup ROS 2 components
+        self.timer = self.create_timer(0.1, self.tick_tree)
+
+    def setup_behavior_tree(self):
+        # Create a simple sequence: navigate -> pick -> navigate -> place
+        root = py_trees.composites.Sequence(name="MainSequence")
+
+        # Example poses
+        pickup_pose = PoseStamped()
+        pickup_pose.pose.position.x = 1.0
+        pickup_pose.pose.position.y = 1.0
+
+        place_pose = PoseStamped()
+        place_pose.pose.position.x = 2.0
+        place_pose.pose.position.y = 2.0
+
+        # Add behaviors to sequence
+        root.add_child(NavigationBehavior("NavigateToPickup", self, pickup_pose))
+        root.add_child(PickObjectBehavior("PickObject", self))
+        root.add_child(NavigationBehavior("NavigateToPlace", self, place_pose))
+        root.add_child(PlaceObjectBehavior("PlaceObject", self))
+
+        self.behaviour_tree = py_trees.trees.BehaviourTree(root)
+
+    def tick_tree(self):
+        """Tick the behavior tree"""
+        try:
+            self.behaviour_tree.tick()
+        except Exception as e:
+            self.get_logger().error(f'Behavior tree error: {e}')
+```
+
+### State Machine Integration
+
+```python
+from enum import Enum
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from geometry_msgs.msg import Twist
+
+class RobotState(Enum):
+    IDLE = "idle"
+    NAVIGATING = "navigating"
+    PICKING = "picking"
+    PLACING = "placing"
+    ERROR = "error"
+
+class StateMachineAgent(Node):
+    def __init__(self):
+        super().__init__('state_machine_agent')
+
+        # Publishers
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.state_pub = self.create_publisher(String, 'robot_state', 10)
+
+        # State management
+        self.current_state = RobotState.IDLE
+        self.previous_state = None
+        self.state_entry_time = self.get_clock().now()
+
+        # State-specific data
+        self.navigation_target = None
+        self.object_to_pick = None
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.state_machine_loop)
+
+    def state_machine_loop(self):
+        """Main state machine loop"""
+        # Update state if needed
+        new_state = self.evaluate_state_transitions()
+        if new_state != self.current_state:
+            self.transition_to_state(new_state)
+
+        # Execute current state
+        self.execute_current_state()
+
+        # Publish current state
+        self.state_pub.publish(String(data=self.current_state.value))
+
+    def evaluate_state_transitions(self):
+        """Evaluate conditions for state transitions"""
+        current_time = self.get_clock().now()
+        time_in_state = (current_time - self.state_entry_time).nanoseconds / 1e9
+
+        if self.current_state == RobotState.IDLE:
+            # Transition to navigating if we have a target
+            if self.navigation_target is not None:
+                return RobotState.NAVIGATING
+        elif self.current_state == RobotState.NAVIGATING:
+            # Check if navigation is complete (simplified)
+            if self.is_navigation_complete():
+                return RobotState.PICKING
+        elif self.current_state == RobotState.PICKING:
+            # Check if picking is complete (simplified)
+            if time_in_state > 2.0:  # 2 seconds for picking
+                return RobotState.NAVIGATING  # Next target
+        elif self.current_state == RobotState.ERROR:
+            # Stay in error until cleared
+            pass
+
+        return self.current_state
+
+    def transition_to_state(self, new_state):
+        """Handle state transition"""
+        self.get_logger().info(f'Transitioning from {self.current_state.value} to {new_state.value}')
+
+        # Exit current state
+        self.exit_current_state()
+
+        # Update state
+        self.previous_state = self.current_state
+        self.current_state = new_state
+        self.state_entry_time = self.get_clock().now()
+
+        # Enter new state
+        self.enter_new_state()
+
+    def exit_current_state(self):
+        """Clean up when leaving current state"""
+        if self.current_state == RobotState.NAVIGATING:
+            # Stop movement
+            stop_cmd = Twist()
+            self.cmd_pub.publish(stop_cmd)
+
+    def enter_new_state(self):
+        """Initialize when entering new state"""
+        if self.current_state == RobotState.NAVIGATING:
+            self.get_logger().info('Starting navigation')
+        elif self.current_state == RobotState.PICKING:
+            self.get_logger().info('Starting object picking')
+
+    def execute_current_state(self):
+        """Execute behavior for current state"""
+        if self.current_state == RobotState.IDLE:
+            self.execute_idle_state()
+        elif self.current_state == RobotState.NAVIGATING:
+            self.execute_navigation_state()
+        elif self.current_state == RobotState.PICKING:
+            self.execute_picking_state()
+
+    def execute_idle_state(self):
+        """Execute idle state behavior"""
+        cmd = Twist()
+        cmd.linear.x = 0.0
+        cmd.angular.z = 0.0
+        self.cmd_pub.publish(cmd)
+
+    def execute_navigation_state(self):
+        """Execute navigation state behavior"""
+        if self.navigation_target:
+            # Simple proportional navigation (simplified)
+            cmd = Twist()
+            cmd.linear.x = 0.3
+            cmd.angular.z = 0.1
+            self.cmd_pub.publish(cmd)
+
+    def execute_picking_state(self):
+        """Execute picking state behavior"""
+        # Simulate picking action
+        self.get_logger().info('Executing pick action...')
+
+    def is_navigation_complete(self):
+        """Check if navigation is complete (simplified)"""
+        # In a real implementation, this would check actual position vs target
+        return False
+
+    def request_navigation(self, x, y):
+        """Request navigation to a position"""
+        self.navigation_target = (x, y)
+        self.get_logger().info(f'Navigation requested to ({x}, {y})')
+
+    def request_pick_object(self, object_id):
+        """Request to pick an object"""
+        self.object_to_pick = object_id
+        self.get_logger().info(f'Pick requested for object {object_id}')
+```
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Python agents provide a powerful framework for implementing intelligent behavior in robotic systems by leveraging Python's rich AI ecosystem while integrating seamlessly with ROS 2's communication infrastructure. The key to successful integration lies in designing appropriate agent-environment interfaces that effectively use ROS topics, services, and actions to create responsive, adaptive, and intelligent robotic systems.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Create a Python agent that uses sensor data to navigate around obstacles
+2. Implement a learning agent that adapts its behavior based on rewards
+3. Build a behavior tree-based agent for complex task execution
+4. Design a state machine agent for multi-step operations
+
+</div>
+
+## Chapter Summary
+
+This lesson introduced the integration of Python-based AI agents with ROS 2 control systems, demonstrating how to create intelligent robotic behaviors using Python's extensive AI libraries while leveraging ROS 2's communication infrastructure. We explored various agent architectures from simple reactive agents to complex learning systems, and examined different integration patterns including sensor fusion, controller interfaces, and advanced behavioral architectures.
+
+## Exercises
+
+1. Implement a Python agent that uses machine learning to recognize and approach objects
+2. Create a multi-agent system where different agents coordinate through ROS topics
+3. Build a reinforcement learning agent that learns to navigate in a simulated environment
+4. Design a behavior tree agent for a complex manipulation task
+
+## References
+
+- ROS 2 Python Client Library: https://docs.ros.org/en/humble/How-To-Guides/Using-External-Libraries.html
+- Behavior Trees in Robotics: https://py-trees.readthedocs.io/
+- Reinforcement Learning with ROS: https://github.com/robinxp/rl-ros
+- State Machines for Robotics: https://github.com/t0bst4r/python-smach
+
+## Next Steps
+
+In the next lesson, we'll explore more advanced integration techniques and best practices for deploying Python agents in real robotic systems.

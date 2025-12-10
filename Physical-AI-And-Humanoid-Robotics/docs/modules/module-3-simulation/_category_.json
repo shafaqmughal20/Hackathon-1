@@ -1,0 +1,8 @@
+{
+  "label": "Module 3: The Digital Twin - Simulation Environments",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Physics simulation, gravity, collisions, Gazebo, Unity, and sensor simulation"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx docusaurus start --port 3002)",
+      "Bash(npm install)",
+      "Bash(dir \"C:\\Users\\Essabel\\Desktop\\physical-ai-book\\Physical-AI-And-Humanoid-Robotics\\static\\img\")"
+    ]
+  }
+}

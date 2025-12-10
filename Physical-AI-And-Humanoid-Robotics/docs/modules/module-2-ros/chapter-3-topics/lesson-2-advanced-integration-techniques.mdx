@@ -1,0 +1,1201 @@
+---
+sidebar_position: 2
+---
+
+# Advanced Integration Techniques: Deep Learning, Planning, and Multi-Agent Systems
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Integrate deep learning models with ROS 2 for perception and control
+- Implement advanced planning algorithms using ROS 2 interfaces
+- Design and coordinate multi-agent systems for complex robotic tasks
+- Optimize agent performance for real-time robotic applications
+- Implement robust error handling and recovery mechanisms for AI agents
+
+## Deep Learning Integration with ROS 2
+
+### Computer Vision Agents
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
+from geometry_msgs.msg import Point
+from cv_bridge import CvBridge
+import cv2
+import torch
+import torchvision.transforms as T
+from PIL import Image as PILImage
+import numpy as np
+
+class VisionAgent(Node):
+    def __init__(self):
+        super().__init__('vision_agent')
+
+        # Initialize CV bridge
+        self.cv_bridge = CvBridge()
+
+        # Subscriptions
+        self.image_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.image_callback, 10)
+
+        # Publishers
+        self.detection_pub = self.create_publisher(String, 'object_detections', 10)
+        self.position_pub = self.create_publisher(Point, 'object_position', 10)
+
+        # Load pre-trained model (e.g., YOLOv5, Detectron2, etc.)
+        self.load_model()
+
+        # Agent state
+        self.latest_image = None
+        self.detection_results = None
+
+        # Processing timer
+        self.process_timer = self.create_timer(0.1, self.process_image)  # 10 Hz
+
+    def load_model(self):
+        """Load pre-trained deep learning model"""
+        try:
+            # Example with torchvision model
+            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+            self.model.eval()
+            self.get_logger().info('Deep learning model loaded successfully')
+        except Exception as e:
+            self.get_logger().error(f'Failed to load model: {e}')
+            self.model = None
+
+    def image_callback(self, msg):
+        """Process incoming image messages"""
+        try:
+            # Convert ROS Image to OpenCV format
+            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.latest_image = cv_image
+        except Exception as e:
+            self.get_logger().error(f'Image conversion error: {e}')
+
+    def process_image(self):
+        """Process image with deep learning model"""
+        if self.latest_image is None or self.model is None:
+            return
+
+        try:
+            # Convert OpenCV image to PIL for model processing
+            pil_image = PILImage.fromarray(cv2.cvtColor(self.latest_image, cv2.COLOR_BGR2RGB))
+
+            # Run inference
+            results = self.model(pil_image)
+
+            # Process results
+            self.detection_results = results
+            self.publish_detections(results)
+
+        except Exception as e:
+            self.get_logger().error(f'Deep learning inference error: {e}')
+
+    def publish_detections(self, results):
+        """Publish detection results"""
+        # Extract detection information
+        detections = results.pandas().xyxy[0]  # YOLOv5 results format
+
+        if len(detections) > 0:
+            for _, detection in detections.iterrows():
+                if detection['confidence'] > 0.5:  # Confidence threshold
+                    detection_msg = String()
+                    detection_msg.data = f"Object: {detection['name']}, Confidence: {detection['confidence']:.2f}"
+                    self.detection_pub.publish(detection_msg)
+
+                    # Publish position of detected object (center of bounding box)
+                    center_x = (detection['xmin'] + detection['xmax']) / 2
+                    center_y = (detection['ymin'] + detection['ymax']) / 2
+
+                    position_msg = Point()
+                    position_msg.x = center_x
+                    position_msg.y = center_y
+                    position_msg.z = detection['confidence']
+                    self.position_pub.publish(position_msg)
+
+    def get_detections(self):
+        """Get latest detection results"""
+        return self.detection_results
+```
+
+### Semantic Segmentation Agent
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from std_msgs.msg import Int32MultiArray
+from cv_bridge import CvBridge
+import torch
+import torchvision.transforms as T
+import numpy as np
+
+class SegmentationAgent(Node):
+    def __init__(self):
+        super().__init__('segmentation_agent')
+
+        self.cv_bridge = CvBridge()
+
+        # Subscriptions and publishers
+        self.image_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.image_callback, 10)
+        self.segmentation_pub = self.create_publisher(
+            Int32MultiArray, 'segmentation_mask', 10)
+
+        # Load segmentation model
+        self.load_segmentation_model()
+
+        self.latest_image = None
+
+        # Processing timer
+        self.process_timer = self.create_timer(0.2, self.process_segmentation)
+
+    def load_segmentation_model(self):
+        """Load semantic segmentation model"""
+        try:
+            # Load DeepLabV3 model
+            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'deeplabv3_resnet50', pretrained=True)
+            self.model.eval()
+            self.get_logger().info('Segmentation model loaded successfully')
+        except Exception as e:
+            self.get_logger().error(f'Failed to load segmentation model: {e}')
+            self.model = None
+
+    def image_callback(self, msg):
+        """Process incoming image"""
+        try:
+            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.latest_image = cv_image
+        except Exception as e:
+            self.get_logger().error(f'Image conversion error: {e}')
+
+    def process_segmentation(self):
+        """Process image for semantic segmentation"""
+        if self.latest_image is None or self.model is None:
+            return
+
+        try:
+            # Preprocess image
+            input_tensor = T.ToTensor()(self.latest_image)
+            input_batch = input_tensor.unsqueeze(0)  # Add batch dimension
+
+            # Run segmentation
+            with torch.no_grad():
+                output = self.model(input_batch)['out'][0]
+                normalized_masks = output.softmax(dim=0)
+
+            # Get predicted segmentation
+            prediction = normalized_masks.argmax(0).cpu().numpy()
+
+            # Publish segmentation mask
+            mask_msg = Int32MultiArray()
+            mask_msg.data = prediction.flatten().tolist()
+            mask_msg.layout.dim.extend([
+                Int32MultiArray.Dim(label='height', size=prediction.shape[0], stride=prediction.shape[0]*prediction.shape[1]),
+                Int32MultiArray.Dim(label='width', size=prediction.shape[1], stride=prediction.shape[1])
+            ])
+            self.segmentation_pub.publish(mask_msg)
+
+        except Exception as e:
+            self.get_logger().error(f'Segmentation processing error: {e}')
+```
+
+### Deep Reinforcement Learning Agent
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist, Pose
+from std_msgs.msg import Float32
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from gymnasium import spaces
+import numpy as np
+import torch
+
+class RobotEnv:
+    """Custom Gym environment for robot navigation"""
+    def __init__(self, node):
+        self.node = node
+        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)  # [linear, angular]
+        self.observation_space = spaces.Box(low=0, high=10, shape=(10,), dtype=np.float32)  # Laser scan
+
+        self.current_obs = np.zeros(10)
+        self.current_reward = 0.0
+        self.current_done = False
+        self.current_info = {}
+
+    def reset(self, seed=None):
+        """Reset environment"""
+        obs = np.random.random(10).astype(np.float32)  # Placeholder
+        self.current_obs = obs
+        return obs, {}
+
+    def step(self, action):
+        """Execute action and return (obs, reward, done, info)"""
+        # Convert action to ROS command
+        cmd = Twist()
+        cmd.linear.x = float(action[0])
+        cmd.angular.z = float(action[1])
+
+        # Publish command
+        self.node.cmd_pub.publish(cmd)
+
+        # Get new observation (simplified)
+        obs = self.get_observation()
+        reward = self.calculate_reward(action, obs)
+        done = self.is_episode_done(obs)
+        info = {}
+
+        self.current_obs = obs
+        self.current_reward = reward
+        self.current_done = done
+        self.current_info = info
+
+        return obs, reward, done, info
+
+    def get_observation(self):
+        """Get current observation from sensors"""
+        if self.node.latest_scan is not None:
+            # Use front 10 laser readings
+            ranges = self.node.latest_scan.ranges
+            step = len(ranges) // 10
+            obs = np.array([min(r, 10.0) for r in ranges[::step][:10]], dtype=np.float32)
+        else:
+            obs = np.ones(10, dtype=np.float32) * 5.0  # Default: 5m to all obstacles
+        return obs
+
+    def calculate_reward(self, action, obs):
+        """Calculate reward based on action and observation"""
+        reward = 0.0
+
+        # Reward for moving forward safely
+        if action[0] > 0.5:  # Moving forward
+            min_distance = min(obs) if len(obs) > 0 else 10.0
+            if min_distance > 0.5:  # Safe distance
+                reward += 0.1
+
+        # Penalty for getting too close to obstacles
+        min_distance = min(obs) if len(obs) > 0 else 10.0
+        if min_distance < 0.3:
+            reward -= 1.0
+
+        # Small time penalty
+        reward -= 0.01
+
+        return reward
+
+    def is_episode_done(self, obs):
+        """Check if episode is done"""
+        min_distance = min(obs) if len(obs) > 0 else 10.0
+        return min_distance < 0.2  # Collision threshold
+
+class DRLAgent(Node):
+    def __init__(self):
+        super().__init__('drl_agent')
+
+        # Subscriptions
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+
+        # Publishers
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.reward_pub = self.create_publisher(Float32, 'drl_reward', 10)
+
+        # Initialize environment and agent
+        self.env = RobotEnv(self)
+        self.latest_scan = None
+        self.model = None
+
+        # Load trained model or initialize new one
+        self.initialize_agent()
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.control_loop)
+
+    def laser_callback(self, msg):
+        self.latest_scan = msg
+
+    def initialize_agent(self):
+        """Initialize or load deep RL agent"""
+        try:
+            # Try to load a pre-trained model
+            try:
+                self.model = PPO.load("drl_robot_model.zip")
+                self.get_logger().info('Pre-trained DRL model loaded')
+            except:
+                # Create new model
+                self.model = PPO('MlpPolicy', self.env, verbose=1, learning_rate=3e-4)
+                self.get_logger().info('New DRL model initialized')
+        except Exception as e:
+            self.get_logger().error(f'Failed to initialize DRL agent: {e}')
+            self.model = None
+
+    def control_loop(self):
+        """Main control loop using DRL agent"""
+        if self.model is None:
+            return
+
+        try:
+            # Get current observation
+            obs = self.env.get_observation()
+
+            # Get action from model
+            action, _states = self.model.predict(obs, deterministic=True)
+
+            # Execute action
+            cmd = Twist()
+            cmd.linear.x = float(action[0])
+            cmd.angular.z = float(action[1])
+            self.cmd_pub.publish(cmd)
+
+            # Calculate and publish reward
+            reward = self.env.calculate_reward(action, obs)
+            self.reward_pub.publish(Float32(data=reward))
+
+        except Exception as e:
+            self.get_logger().error(f'DRL control error: {e}')
+```
+
+## Advanced Planning Integration
+
+### Path Planning Agent
+
+```python
+import rclpy
+from rclpy.node import Node
+from nav_msgs.msg import OccupancyGrid, Path
+from geometry_msgs.msg import PoseStamped, Point
+from visualization_msgs.msg import Marker
+from your_package.action import NavigateToPose
+from rclpy.action import ActionClient
+import numpy as np
+from scipy.spatial import KDTree
+import heapq
+
+class PathPlanningAgent(Node):
+    def __init__(self):
+        super().__init__('path_planning_agent')
+
+        # Action client for navigation
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+
+        # Subscriptions
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, 'map', self.map_callback, 10)
+
+        # Publishers
+        self.path_pub = self.create_publisher(Path, 'global_plan', 10)
+        self.marker_pub = self.create_publisher(Marker, 'path_visualization', 10)
+
+        # Agent state
+        self.map_data = None
+        self.map_array = None
+        self.map_resolution = 0.0
+        self.map_origin = None
+
+        # Planning parameters
+        self.planning_timer = self.create_timer(0.5, self.planning_loop)
+
+    def map_callback(self, msg):
+        """Process occupancy grid map"""
+        self.map_data = msg
+        self.map_resolution = msg.info.resolution
+        self.map_origin = (msg.info.origin.position.x, msg.info.origin.position.y)
+
+        # Convert map data to 2D array
+        width = msg.info.width
+        height = msg.info.height
+        self.map_array = np.array(msg.data).reshape((height, width))
+
+    def world_to_map(self, x, y):
+        """Convert world coordinates to map indices"""
+        if self.map_origin is None:
+            return None, None
+
+        map_x = int((x - self.map_origin[0]) / self.map_resolution)
+        map_y = int((y - self.map_origin[1]) / self.map_resolution)
+
+        return map_x, map_y
+
+    def map_to_world(self, map_x, map_y):
+        """Convert map indices to world coordinates"""
+        if self.map_origin is None:
+            return 0.0, 0.0
+
+        world_x = map_x * self.map_resolution + self.map_origin[0]
+        world_y = map_y * self.map_resolution + self.map_origin[1]
+
+        return world_x, world_y
+
+    def is_valid_cell(self, x, y):
+        """Check if cell is valid for navigation"""
+        if self.map_array is None:
+            return False
+
+        if x < 0 or x >= self.map_array.shape[1] or y < 0 or y >= self.map_array.shape[0]:
+            return False
+
+        # Check if cell is free (0 = free, 100 = occupied)
+        return self.map_array[y, x] < 50  # Threshold for free space
+
+    def a_star_plan(self, start_x, start_y, goal_x, goal_y):
+        """A* path planning algorithm"""
+        start_idx = self.world_to_map(start_x, start_y)
+        goal_idx = self.world_to_map(goal_x, goal_y)
+
+        if start_idx is None or goal_idx is None:
+            return None
+
+        start_map_x, start_map_y = start_idx
+        goal_map_x, goal_map_y = goal_idx
+
+        if not (self.is_valid_cell(start_map_x, start_map_y) and self.is_valid_cell(goal_map_x, goal_map_y)):
+            return None
+
+        # A* algorithm implementation
+        open_set = [(0, (start_map_x, start_map_y))]
+        came_from = {}
+        g_score = {(start_map_x, start_map_y): 0}
+        f_score = {(start_map_x, start_map_y): self.heuristic(start_map_x, start_map_y, goal_map_x, goal_map_y)}
+
+        while open_set:
+            current = heapq.heappop(open_set)[1]
+
+            if current == (goal_map_x, goal_map_y):
+                # Reconstruct path
+                path = self.reconstruct_path(came_from, current)
+                return path
+
+            for neighbor in self.get_neighbors(current[0], current[1]):
+                tentative_g_score = g_score[current] + self.distance(current, neighbor)
+
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = g_score[neighbor] + self.heuristic(neighbor[0], neighbor[1], goal_map_x, goal_map_y)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        return None  # No path found
+
+    def heuristic(self, x1, y1, x2, y2):
+        """Heuristic function for A* (Euclidean distance)"""
+        return np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+    def get_neighbors(self, x, y):
+        """Get valid neighbors for current cell"""
+        neighbors = []
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)]:
+            nx, ny = x + dx, y + dy
+            if self.is_valid_cell(nx, ny):
+                neighbors.append((nx, ny))
+        return neighbors
+
+    def distance(self, pos1, pos2):
+        """Calculate distance between two positions"""
+        return np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+
+    def reconstruct_path(self, came_from, current):
+        """Reconstruct path from came_from dictionary"""
+        path = [current]
+        while current in came_from:
+            current = came_from[current]
+            path.append(current)
+        path.reverse()
+        return path
+
+    def publish_path(self, path):
+        """Publish path as ROS message"""
+        if path is None:
+            return
+
+        path_msg = Path()
+        path_msg.header.frame_id = 'map'
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+
+        for map_x, map_y in path:
+            world_x, world_y = self.map_to_world(map_x, map_y)
+            pose = PoseStamped()
+            pose.header.frame_id = 'map'
+            pose.pose.position.x = world_x
+            pose.pose.position.y = world_y
+            pose.pose.position.z = 0.0
+            pose.pose.orientation.w = 1.0
+            path_msg.poses.append(pose)
+
+        self.path_pub.publish(path_msg)
+
+    def planning_loop(self):
+        """Main planning loop"""
+        if self.map_array is None:
+            return
+
+        # Example: Plan from (0, 0) to (5, 5)
+        path = self.a_star_plan(0.0, 0.0, 5.0, 5.0)
+        if path:
+            self.publish_path(path)
+
+    def navigate_to_pose(self, x, y, theta=0.0):
+        """Navigate to a specific pose using path planning"""
+        if not self.nav_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().error('Navigation server not available')
+            return
+
+        # Plan path first
+        path = self.a_star_plan(0.0, 0.0, x, y)  # Assuming current position is (0,0)
+        if path is None:
+            self.get_logger().error('No path found to target')
+            return
+
+        # Publish planned path
+        self.publish_path(path)
+
+        # Send navigation goal
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.pose.position.x = x
+        goal_msg.pose.pose.position.y = y
+        goal_msg.pose.pose.orientation = self.euler_to_quaternion(0, 0, theta)
+
+        self.nav_client.send_goal_async(goal_msg)
+```
+
+## Multi-Agent Coordination
+
+### Leader-Follower Multi-Agent System
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped, Twist
+from std_msgs.msg import String, Bool
+from visualization_msgs.msg import MarkerArray
+import math
+
+class MultiAgentCoordinator(Node):
+    def __init__(self):
+        super().__init__('multi_agent_coordinator')
+
+        # Publishers for each agent (assuming 3 agents)
+        self.agent_cmd_pubs = {}
+        for i in range(3):
+            self.agent_cmd_pubs[f'agent_{i}'] = self.create_publisher(
+                Twist, f'agent_{i}/cmd_vel', 10)
+
+        # Publishers for visualization
+        self.marker_pub = self.create_publisher(MarkerArray, 'agent_markers', 10)
+
+        # Subscriptions for agent positions (simplified)
+        self.agent_pos_subs = {}
+        self.agent_positions = {}
+        for i in range(3):
+            self.agent_positions[f'agent_{i}'] = (0.0, 0.0)
+            self.agent_pos_subs[f'agent_{i}'] = self.create_subscription(
+                PoseStamped, f'agent_{i}/pose',
+                lambda msg, agent_id=i: self.agent_pose_callback(msg, f'agent_{agent_id}'), 10)
+
+        # Leader-follower configuration
+        self.leader_id = 'agent_0'
+        self.follower_ids = ['agent_1', 'agent_2']
+        self.formation_distance = 1.0  # meters
+        self.formation_angle = math.pi / 2  # 90 degrees
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.coordinated_control)
+
+    def agent_pose_callback(self, msg, agent_id):
+        """Update agent position"""
+        self.agent_positions[agent_id] = (msg.pose.position.x, msg.pose.position.y)
+
+    def coordinated_control(self):
+        """Execute coordinated multi-agent control"""
+        if self.leader_id not in self.agent_positions:
+            return
+
+        leader_pos = self.agent_positions[self.leader_id]
+
+        # Calculate follower positions based on formation
+        for i, follower_id in enumerate(self.follower_ids):
+            if follower_id not in self.agent_positions:
+                continue
+
+            # Calculate desired position for follower
+            angle_offset = i * self.formation_angle
+            desired_x = leader_pos[0] + self.formation_distance * math.cos(angle_offset)
+            desired_y = leader_pos[1] + self.formation_distance * math.sin(angle_offset)
+
+            # Calculate control command to reach desired position
+            current_pos = self.agent_positions[follower_id]
+            cmd = self.calculate_navigation_command(current_pos, (desired_x, desired_y))
+
+            # Publish command
+            self.agent_cmd_pubs[follower_id].publish(cmd)
+
+    def calculate_navigation_command(self, current_pos, target_pos):
+        """Calculate navigation command to reach target position"""
+        cmd = Twist()
+
+        dx = target_pos[0] - current_pos[0]
+        dy = target_pos[1] - current_pos[1]
+        distance = math.sqrt(dx*dx + dy*dy)
+
+        if distance > 0.1:  # Threshold for movement
+            cmd.linear.x = min(0.3, distance * 0.5)  # Proportional control
+            cmd.angular.z = math.atan2(dy, dx) * 1.0  # Proportional angular control
+
+        return cmd
+
+    def set_leader_target(self, x, y):
+        """Set target position for leader agent"""
+        # This would typically be implemented in the leader agent
+        self.get_logger().info(f'Setting leader target to ({x}, {y})')
+```
+
+### Distributed Task Allocation Agent
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Int32
+from geometry_msgs.msg import Point
+import random
+import time
+
+class TaskAllocationAgent(Node):
+    def __init__(self):
+        super().__init__('task_allocation_agent')
+
+        # Publishers for task allocation
+        self.task_pub = self.create_publisher(String, 'task_assignment', 10)
+        self.status_pub = self.create_publisher(String, 'agent_status', 10)
+
+        # Subscriptions for task requests and agent status
+        self.task_request_sub = self.create_subscription(
+            String, 'task_request', self.task_request_callback, 10)
+        self.agent_status_sub = self.create_subscription(
+            String, 'agent_status', self.agent_status_callback, 10)
+
+        # Agent state
+        self.agent_id = self.get_namespace()  # Unique agent identifier
+        self.agent_capabilities = ['navigation', 'manipulation', 'perception']  # Example capabilities
+        self.current_tasks = []
+        self.agent_statuses = {}  # Other agents' statuses
+
+        # Task queue
+        self.task_queue = []
+        self.allocated_tasks = {}  # task_id -> agent_id
+
+        # Control timer
+        self.control_timer = self.create_timer(0.5, self.task_management_loop)
+
+    def task_request_callback(self, msg):
+        """Handle incoming task requests"""
+        task_info = msg.data
+        self.task_queue.append({
+            'id': f'task_{int(time.time() * 1000)}',
+            'description': task_info,
+            'timestamp': self.get_clock().now().nanoseconds
+        })
+        self.get_logger().info(f'Received task request: {task_info}')
+
+    def agent_status_callback(self, msg):
+        """Update other agents' status"""
+        # Parse status message (simplified format)
+        # In a real implementation, you'd have a more structured message
+        self.agent_statuses[self.get_namespace()] = msg.data
+
+    def task_management_loop(self):
+        """Main task management loop"""
+        if self.task_queue:
+            # Allocate tasks based on capabilities and availability
+            self.allocate_tasks()
+
+        # Update agent status
+        status_msg = String()
+        status_msg.data = f'ID: {self.agent_id}, Tasks: {len(self.current_tasks)}, Available: {len(self.current_tasks) < 3}'
+        self.status_pub.publish(status_msg)
+
+    def allocate_tasks(self):
+        """Allocate tasks to available agents"""
+        available_agents = self.find_available_agents()
+
+        for task in self.task_queue[:]:  # Copy list to iterate safely
+            assigned_agent = self.find_best_agent_for_task(task, available_agents)
+            if assigned_agent:
+                # Assign task
+                assignment_msg = String()
+                assignment_msg.data = f'AGENT:{assigned_agent}:TASK:{task["id"]}:DESC:{task["description"]}'
+                self.task_pub.publish(assignment_msg)
+
+                # Update allocation
+                self.allocated_tasks[task['id']] = assigned_agent
+                self.task_queue.remove(task)
+
+                self.get_logger().info(f'Assigned task {task["id"]} to {assigned_agent}')
+
+    def find_available_agents(self):
+        """Find agents that are available for tasks"""
+        available = []
+        for agent_id, status in self.agent_statuses.items():
+            if 'Available' in status or 'available' in status.lower():
+                available.append(agent_id)
+        return available
+
+    def find_best_agent_for_task(self, task, available_agents):
+        """Find the best agent for a specific task"""
+        # In a real implementation, this would consider:
+        # - Agent capabilities vs task requirements
+        # - Agent location vs task location
+        # - Agent workload
+        # - Agent efficiency for specific task types
+
+        if available_agents:
+            # Simple round-robin allocation
+            return random.choice(available_agents)
+
+        return None
+
+    def submit_task_request(self, task_description):
+        """Submit a new task request"""
+        request_msg = String()
+        request_msg.data = task_description
+        self.task_request_sub.publish(request_msg)
+```
+
+## Performance Optimization Techniques
+
+### Efficient Message Handling
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+import numpy as np
+from collections import deque
+import threading
+
+class OptimizedAgent(Node):
+    def __init__(self):
+        super().__init__('optimized_agent')
+
+        # Use efficient data structures
+        self.scan_buffer = deque(maxlen=5)  # Limited buffer to prevent memory issues
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.optimized_scan_callback, 1)
+
+        # Publishers
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 1)
+
+        # Pre-allocated message objects to reduce allocation
+        self.cmd_msg = Twist()
+        self.processed_scan = None
+
+        # Threading for intensive computation
+        self.computation_thread = threading.Thread(target=self.intensive_computation, daemon=True)
+        self.computation_queue = deque()
+        self.computation_result = None
+        self.computation_lock = threading.Lock()
+
+        # Start computation thread
+        self.computation_thread.start()
+
+        # Control timer at higher frequency
+        self.control_timer = self.create_timer(0.02, self.optimized_control_loop)  # 50 Hz
+
+    def optimized_scan_callback(self, msg):
+        """Optimized scan callback with minimal processing"""
+        # Store scan in buffer (minimal processing)
+        self.scan_buffer.append(msg)
+
+    def intensive_computation(self):
+        """Run intensive computations in separate thread"""
+        while True:
+            if self.computation_queue:
+                with self.computation_lock:
+                    if self.computation_queue:
+                        scan_msg = self.computation_queue.popleft()
+
+                # Perform intensive computation
+                processed_data = self.process_scan_intensively(scan_msg)
+
+                with self.computation_lock:
+                    self.computation_result = processed_data
+
+    def process_scan_intensively(self, scan_msg):
+        """Intensive scan processing that runs in separate thread"""
+        # Convert to numpy array for efficient processing
+        ranges = np.array(scan_msg.ranges)
+
+        # Perform complex calculations (example: clustering)
+        valid_ranges = ranges[(ranges >= scan_msg.range_min) & (ranges <= scan_msg.range_max)]
+
+        # Detect obstacles using more complex algorithms
+        obstacles = self.detect_obstacles_advanced(valid_ranges)
+
+        return obstacles
+
+    def detect_obstacles_advanced(self, ranges):
+        """Advanced obstacle detection (simplified example)"""
+        # This would implement more complex algorithms like:
+        # - Clustering algorithms to group nearby points
+        # - Machine learning models for object classification
+        # - Dynamic programming for tracking
+        if len(ranges) > 0:
+            return {'min_distance': np.min(ranges), 'count': len(ranges)}
+        return {'min_distance': float('inf'), 'count': 0}
+
+    def optimized_control_loop(self):
+        """Optimized control loop"""
+        if not self.scan_buffer:
+            return
+
+        latest_scan = self.scan_buffer[-1]
+
+        # Add to computation queue if needed
+        with self.computation_lock:
+            if len(self.computation_queue) < 2:  # Limit queue size
+                self.computation_queue.append(latest_scan)
+
+        # Use pre-allocated message
+        cmd = self.cmd_msg
+        cmd.linear.x = 0.0
+        cmd.angular.z = 0.0
+
+        # Use computation result if available
+        with self.computation_lock:
+            if self.computation_result:
+                result = self.computation_result
+                if result['min_distance'] < 0.5:
+                    cmd.angular.z = 0.5
+                else:
+                    cmd.linear.x = 0.3
+
+        # Publish command
+        self.cmd_pub.publish(cmd)
+
+    def destroy_node(self):
+        """Clean up resources"""
+        self.computation_thread.join(timeout=1.0)
+        super().destroy_node()
+```
+
+### Resource Management and Memory Optimization
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, LaserScan
+from std_msgs.msg import Float32
+from cv_bridge import CvBridge
+import numpy as np
+import psutil
+import gc
+
+class ResourceEfficientAgent(Node):
+    def __init__(self):
+        super().__init__('resource_efficient_agent')
+
+        self.cv_bridge = CvBridge()
+
+        # Subscriptions with appropriate QoS for resource efficiency
+        from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
+        efficient_qos = QoSProfile(
+            depth=1,  # Minimal queue depth
+            reliability=ReliabilityPolicy.BEST_EFFORT,  # For high-frequency data
+            history=HistoryPolicy.KEEP_LAST
+        )
+
+        self.image_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.memory_efficient_image_callback, efficient_qos)
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.scan_callback, 10)
+
+        # Publishers
+        self.performance_pub = self.create_publisher(Float32, 'performance_metric', 10)
+
+        # Resource monitoring
+        self.memory_threshold = 80  # Percentage
+        self.cpu_threshold = 80   # Percentage
+
+        # Control timer
+        self.control_timer = self.create_timer(1.0, self.resource_monitoring)
+
+    def memory_efficient_image_callback(self, msg):
+        """Memory-efficient image processing"""
+        try:
+            # Convert image efficiently
+            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+
+            # Process image with memory considerations
+            processed_result = self.process_image_memory_efficient(cv_image)
+
+            # Explicitly delete large objects when done
+            del cv_image
+
+        except Exception as e:
+            self.get_logger().error(f'Image processing error: {e}')
+
+    def process_image_memory_efficient(self, image):
+        """Process image with memory efficiency in mind"""
+        # Downsample image if too large
+        height, width = image.shape[:2]
+        if height > 480 or width > 640:  # Threshold for downsampling
+            new_height = min(height, 480)
+            new_width = min(width, 640)
+            image = cv2.resize(image, (new_width, new_height))
+
+        # Process image (simplified example)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150)
+
+        # Return only necessary information, not the full image
+        edge_count = int(np.sum(edges > 0) / 255.0)
+        return edge_count
+
+    def resource_monitoring(self):
+        """Monitor system resources"""
+        # Check memory usage
+        memory_percent = psutil.virtual_memory().percent
+        cpu_percent = psutil.cpu_percent()
+
+        # Publish performance metric
+        perf_msg = Float32()
+        perf_msg.data = cpu_percent
+        self.performance_pub.publish(perf_msg)
+
+        # Log warnings if resources are high
+        if memory_percent > self.memory_threshold:
+            self.get_logger().warning(f'High memory usage: {memory_percent}%')
+            gc.collect()  # Force garbage collection
+
+        if cpu_percent > self.cpu_threshold:
+            self.get_logger().warning(f'High CPU usage: {cpu_percent}%')
+
+    def adaptive_processing(self, sensor_data):
+        """Adapt processing based on available resources"""
+        memory_percent = psutil.virtual_memory().percent
+
+        if memory_percent > 90:
+            # Reduce processing quality to conserve memory
+            return self.low_quality_processing(sensor_data)
+        elif memory_percent > 75:
+            # Medium quality processing
+            return self.medium_quality_processing(sensor_data)
+        else:
+            # Full quality processing
+            return self.high_quality_processing(sensor_data)
+
+    def low_quality_processing(self, data):
+        """Low quality processing for resource-constrained situations"""
+        # Simplified processing algorithm
+        return "low_quality_result"
+
+    def medium_quality_processing(self, data):
+        """Medium quality processing"""
+        # Balanced processing algorithm
+        return "medium_quality_result"
+
+    def high_quality_processing(self, data):
+        """High quality processing when resources are available"""
+        # Full processing algorithm
+        return "high_quality_result"
+```
+
+## Error Handling and Recovery
+
+### Robust Agent with Error Recovery
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from std_msgs.msg import String
+import traceback
+import time
+
+class RobustAgent(Node):
+    def __init__(self):
+        super().__init__('robust_agent')
+
+        # Subscriptions and publishers
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.scan_callback, 10)
+        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.status_pub = self.create_publisher(String, 'agent_status', 10)
+
+        # Agent state with error handling
+        self.latest_scan = None
+        self.error_count = 0
+        self.max_errors = 5
+        self.recovery_mode = False
+        self.last_recovery_time = 0
+        self.recovery_interval = 10  # seconds
+
+        # Control timer
+        self.control_timer = self.create_timer(0.1, self.robust_control_loop)
+
+    def scan_callback(self, msg):
+        """Robust scan callback with error handling"""
+        try:
+            # Validate message
+            if not self.validate_scan_message(msg):
+                self.get_logger().warning('Invalid scan message received')
+                return
+
+            self.latest_scan = msg
+            self.error_count = max(0, self.error_count - 1)  # Reduce error count on success
+
+        except Exception as e:
+            self.handle_error(f'Scan callback error: {e}', traceback.format_exc())
+
+    def validate_scan_message(self, msg):
+        """Validate scan message integrity"""
+        if not msg.ranges:
+            return False
+
+        # Check for invalid values
+        for r in msg.ranges:
+            if not (msg.range_min <= r <= msg.range_max) and not (r == float('inf')):
+                return False
+
+        return True
+
+    def robust_control_loop(self):
+        """Robust control loop with error handling"""
+        try:
+            if self.recovery_mode:
+                self.execute_recovery_procedure()
+            else:
+                self.execute_normal_control()
+
+            # Reset error count on successful execution
+            self.error_count = max(0, self.error_count - 1)
+
+        except Exception as e:
+            self.handle_error(f'Control loop error: {e}', traceback.format_exc())
+
+    def execute_normal_control(self):
+        """Execute normal control behavior"""
+        if self.latest_scan is not None:
+            cmd = self.compute_control_command()
+            self.cmd_pub.publish(cmd)
+
+    def execute_recovery_procedure(self):
+        """Execute recovery procedure when in recovery mode"""
+        current_time = time.time()
+
+        if current_time - self.last_recovery_time > self.recovery_interval:
+            # Try to reset and resume normal operation
+            self.get_logger().info('Attempting to resume normal operation')
+            self.recovery_mode = False
+            self.last_recovery_time = current_time
+        else:
+            # Execute safe recovery behavior (e.g., stop)
+            safe_cmd = Twist()
+            self.cmd_pub.publish(safe_cmd)
+
+    def compute_control_command(self):
+        """Compute control command with error handling"""
+        try:
+            if self.latest_scan is None:
+                return Twist()  # Return zero command if no data
+
+            # Example control logic
+            cmd = Twist()
+            front_distances = self.latest_scan.ranges[len(self.latest_scan.ranges)//2-10:len(self.latest_scan.ranges)//2+10]
+            min_distance = min(front_distances) if front_distances else float('inf')
+
+            if min_distance < 0.5:
+                cmd.angular.z = 0.5
+            else:
+                cmd.linear.x = 0.3
+
+            return cmd
+
+        except Exception as e:
+            self.handle_error(f'Control computation error: {e}', traceback.format_exc())
+            return Twist()  # Return safe zero command
+
+    def handle_error(self, error_msg, error_traceback):
+        """Handle errors with appropriate responses"""
+        self.get_logger().error(error_msg)
+        self.get_logger().debug(error_traceback)
+
+        # Increment error count
+        self.error_count += 1
+
+        # Check if we need to enter recovery mode
+        if self.error_count >= self.max_errors and not self.recovery_mode:
+            self.enter_recovery_mode()
+
+        # Publish error status
+        status_msg = String()
+        status_msg.data = f'ERROR: {error_msg}, Error Count: {self.error_count}'
+        self.status_pub.publish(status_msg)
+
+    def enter_recovery_mode(self):
+        """Enter recovery mode when error threshold is reached"""
+        self.get_logger().warn('Entering recovery mode due to excessive errors')
+        self.recovery_mode = True
+        self.last_recovery_time = time.time()
+
+        # Publish recovery status
+        status_msg = String()
+        status_msg.data = 'RECOVERY_MODE'
+        self.status_pub.publish(status_msg)
+
+        # Execute immediate safe behavior
+        safe_cmd = Twist()
+        self.cmd_pub.publish(safe_cmd)
+
+    def reset_errors(self):
+        """Reset error count and exit recovery mode"""
+        self.error_count = 0
+        self.recovery_mode = False
+        self.get_logger().info('Errors reset, normal operation resumed')
+```
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Advanced Python agent integration with ROS 2 requires careful consideration of performance, resource management, and error handling. Deep learning models, planning algorithms, and multi-agent coordination systems can be effectively integrated with ROS 2's communication infrastructure, but they require optimization techniques to ensure real-time performance and robust operation in robotic applications.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Integrate a pre-trained deep learning model with a ROS 2 robot for perception tasks
+2. Implement a multi-agent system with coordinated behavior
+3. Create an optimized agent that handles resource constraints effectively
+4. Build a robust agent with comprehensive error handling and recovery
+
+</div>
+
+## Chapter Summary
+
+This lesson covered advanced integration techniques for Python agents with ROS 2, including deep learning integration, advanced planning algorithms, multi-agent coordination, performance optimization, and robust error handling. We explored how to effectively combine Python's powerful AI ecosystem with ROS 2's communication infrastructure to create sophisticated, intelligent robotic systems capable of complex perception, planning, and control tasks.
+
+## Exercises
+
+1. Implement a deep learning-based object recognition system integrated with ROS 2
+2. Create a multi-agent system for coordinated navigation
+3. Design an optimized path planning agent using advanced algorithms
+4. Build a robust error-handling system for AI agents in robotics
+
+## References
+
+- ROS 2 and PyTorch Integration: https://github.com/ros2/pytorch_ros
+- Deep Learning in Robotics: https://arxiv.org/abs/2008.09588
+- Multi-Agent Systems in ROS: https://github.com/ros-industrial/industrial_training
+- Performance Optimization in ROS 2: https://docs.ros.org/en/humble/How-To-Guides/Logging-and-Debugging.html
+
+## Next Steps
+
+In the next lesson, we'll explore the chapter summary and review all the concepts covered in this chapter on Python agents integration with ROS controllers.

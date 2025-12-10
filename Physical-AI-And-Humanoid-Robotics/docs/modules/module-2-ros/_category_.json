@@ -1,0 +1,8 @@
+{
+  "label": "Module 2: ROS 2 - The Robotic Nervous System",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "ROS 2 Nodes, Topics, Services, and Python Agents integration with ROS controllers"
+  }
+}

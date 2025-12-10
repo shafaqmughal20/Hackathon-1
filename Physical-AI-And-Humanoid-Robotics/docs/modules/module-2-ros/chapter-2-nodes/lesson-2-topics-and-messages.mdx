@@ -1,0 +1,685 @@
+---
+sidebar_position: 2
+---
+
+# Topics and Messages: Asynchronous Communication in ROS 2
+
+## Learning Objectives
+
+By the end of this lesson, you will be able to:
+- Design and implement publish-subscribe communication patterns in ROS 2
+- Create custom message types for specific application needs
+- Configure Quality of Service (QoS) settings for different communication requirements
+- Implement message filtering and synchronization techniques
+- Optimize message passing for performance and reliability in Physical AI systems
+
+## Understanding Topics and Messages
+
+### The Publish-Subscribe Pattern
+
+The publish-subscribe pattern is the primary communication mechanism in ROS 2 for asynchronous data exchange:
+
+```
+Publisher Node → Topic → Subscriber Node
+     ↓                      ↑
+Message Creation      Message Processing
+     ↓                      ↑
+Message Publishing      Message Callback
+```
+
+### Key Characteristics
+
+#### Asynchronous Communication
+- Publishers and subscribers don't need to run simultaneously
+- Messages are queued and delivered when subscribers are available
+- Enables loose coupling between system components
+
+#### Topic-Based Routing
+- Messages are sent to named topics
+- Multiple subscribers can listen to the same topic
+- Publishers don't need to know about specific subscribers
+
+#### Type Safety
+- All topics have a specific message type
+- Compile-time and runtime type checking
+- Ensures data integrity across the system
+
+## Standard Message Types
+
+### Common Message Categories
+
+#### Basic Data Types
+- `std_msgs`: Basic data types (Bool, Int32, Float64, String, etc.)
+- `std_msgs/Header`: Metadata for messages (timestamp, frame_id, sequence)
+
+#### Geometry Types
+- `geometry_msgs`: Position, orientation, and transformation data
+  - `Point`, `Pose`, `Quaternion`, `Twist`, `Vector3`
+  - `Transform`, `TransformStamped`
+
+#### Sensor Types
+- `sensor_msgs`: Sensor data and specifications
+  - `LaserScan`, `Image`, `PointCloud2`
+  - `JointState`, `Imu`, `MagneticField`
+
+#### Navigation Types
+- `nav_msgs`: Navigation-specific messages
+  - `Odometry`, `Path`, `OccupancyGrid`
+  - `GridCells`, `MapMetaData`
+
+### Using Standard Messages
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Int32, Float64
+from geometry_msgs.msg import Twist, Pose
+from sensor_msgs.msg import LaserScan, JointState
+
+class MessageDemoNode(Node):
+    def __init__(self):
+        super().__init__('message_demo')
+
+        # Publisher for different message types
+        self.string_pub = self.create_publisher(String, 'string_topic', 10)
+        self.int_pub = self.create_publisher(Int32, 'int_topic', 10)
+        self.twist_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Subscriber for different message types
+        self.string_sub = self.create_subscription(
+            String, 'string_topic', self.string_callback, 10)
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+
+        # Timer to publish messages
+        self.timer = self.create_timer(1.0, self.publish_demo_messages)
+
+    def publish_demo_messages(self):
+        # Publish a string message
+        string_msg = String()
+        string_msg.data = f'Demo message at {self.get_clock().now().seconds_nanoseconds()}'
+        self.string_pub.publish(string_msg)
+
+        # Publish an integer message
+        int_msg = Int32()
+        int_msg.data = 42
+        self.int_pub.publish(int_msg)
+
+        # Publish a twist message (for robot motion)
+        twist_msg = Twist()
+        twist_msg.linear.x = 0.5
+        twist_msg.angular.z = 0.2
+        self.twist_pub.publish(twist_msg)
+
+    def string_callback(self, msg):
+        self.get_logger().info(f'Received string: {msg.data}')
+
+    def laser_callback(self, msg):
+        self.get_logger().info(f'Laser scan: {len(msg.ranges)} readings, range_min: {msg.range_min}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = MessageDemoNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Creating Custom Messages
+
+### Message Definition Format
+
+Custom messages are defined using `.msg` files with a simple syntax:
+
+```txt
+# Custom message for robot status
+# File: msg/RobotStatus.msg
+
+# Basic fields
+uint8 ROBOT_IDLE=0
+uint8 ROBOT_MOVING=1
+uint8 ROBOT_MANIPULATING=2
+uint8 status
+string robot_name
+float64 battery_level
+bool is_charging
+
+# Array field
+float64[] joint_positions
+
+# Nested message field
+std_msgs/Header header
+```
+
+### Building Custom Messages
+
+To use custom messages, you need to:
+
+1. Create the `.msg` file in the `msg/` directory of your package
+2. Update `package.xml` with message dependencies
+3. Update `CMakeLists.txt` to include message generation
+4. Build the package with `colcon build`
+
+### Using Custom Messages in Python
+
+```python
+# Assuming you have a custom message RobotStatus
+from rclpy.node import Node
+from your_package.msg import RobotStatus  # Custom message
+from std_msgs.msg import Header
+
+class RobotStatusNode(Node):
+    def __init__(self):
+        super().__init__('robot_status_node')
+
+        # Publisher for custom message
+        self.status_pub = self.create_publisher(RobotStatus, 'robot_status', 10)
+
+        # Timer to publish status updates
+        self.timer = self.create_timer(0.1, self.publish_status)
+
+    def publish_status(self):
+        msg = RobotStatus()
+
+        # Set header
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'base_link'
+
+        # Set status fields
+        msg.status = RobotStatus.ROBOT_MOVING
+        msg.robot_name = 'humanoid_robot_1'
+        msg.battery_level = 85.5
+        msg.is_charging = False
+
+        # Set joint positions (example)
+        msg.joint_positions = [0.1, 0.2, 0.3, -0.1, -0.2, -0.3]
+
+        self.status_pub.publish(msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RobotStatusNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Quality of Service (QoS) Settings
+
+### Understanding QoS Policies
+
+QoS policies control the communication behavior between publishers and subscribers:
+
+#### Reliability Policy
+- **RELIABLE**: All messages are delivered (with retries)
+- **BEST_EFFORT**: Messages are sent without guarantee of delivery
+
+#### Durability Policy
+- **TRANSIENT_LOCAL**: Publishers keep messages for late-joining subscribers
+- **VOLATILE**: No message persistence
+
+#### History Policy
+- **KEEP_LAST**: Store most recent N messages
+- **KEEP_ALL**: Store all messages (limited by memory)
+
+#### Depth Policy
+Controls how many messages are stored in the queue
+
+### QoS Configuration Examples
+
+```python
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+
+class QoSExampleNode(Node):
+    def __init__(self):
+        super().__init__('qos_example')
+
+        # QoS for sensor data (high frequency, best effort)
+        sensor_qos = QoSProfile(
+            depth=5,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST
+        )
+
+        # QoS for control commands (low latency, reliable)
+        control_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST
+        )
+
+        # QoS for configuration (persistent, reliable)
+        config_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST
+        )
+
+        # Publishers with different QoS
+        self.sensor_pub = self.create_publisher(LaserScan, 'scan', sensor_qos)
+        self.control_pub = self.create_publisher(Twist, 'cmd_vel', control_qos)
+        self.config_pub = self.create_publisher(String, 'config', config_qos)
+
+        # Subscribers with matching QoS
+        self.sensor_sub = self.create_subscription(
+            LaserScan, 'scan', self.sensor_callback, sensor_qos)
+        self.control_sub = self.create_subscription(
+            Twist, 'cmd_vel', self.control_callback, control_qos)
+        self.config_sub = self.create_subscription(
+            String, 'config', self.config_callback, config_qos)
+
+    def sensor_callback(self, msg):
+        self.get_logger().debug('Received sensor data')
+
+    def control_callback(self, msg):
+        self.get_logger().info('Received control command')
+
+    def config_callback(self, msg):
+        self.get_logger().info(f'Received config: {msg.data}')
+```
+
+### QoS Matching Rules
+
+When publisher and subscriber QoS don't match exactly:
+- The system uses the most restrictive policy
+- Incompatible policies may prevent communication
+- Use `rclpy.qos.qos_profile_sensor_data` for common patterns
+
+## Advanced Message Techniques
+
+### Message Filtering
+
+```python
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import LaserScan
+
+class FilteredSubscriberNode(Node):
+    def __init__(self):
+        super().__init__('filtered_subscriber')
+
+        # Subscribe to laser scan with sensor QoS
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.scan_callback, qos_profile_sensor_data)
+
+    def scan_callback(self, msg):
+        # Filter laser scan data to only process certain ranges
+        filtered_ranges = []
+        for i, range_val in enumerate(msg.ranges):
+            if msg.range_min <= range_val <= msg.range_max:
+                # Only process ranges in front of the robot
+                angle = msg.angle_min + i * msg.angle_increment
+                if -0.5 < angle < 0.5:  # Front 60-degree sector
+                    filtered_ranges.append(range_val)
+
+        # Process filtered data
+        if filtered_ranges:
+            min_distance = min(filtered_ranges)
+            if min_distance < 1.0:  # Obstacle within 1 meter
+                self.get_logger().warn(f'Obstacle detected at {min_distance:.2f}m')
+```
+
+### Message Synchronization
+
+For processing messages from multiple topics together:
+
+```python
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import LaserScan, Image, Imu
+import threading
+
+class SynchronizedNode(Node):
+    def __init__(self):
+        super().__init__('synchronized_node')
+
+        # Subscribe to multiple sensors
+        self.lidar_sub = self.create_subscription(
+            LaserScan, 'scan', self.lidar_callback, qos_profile_sensor_data)
+        self.camera_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.camera_callback, qos_profile_sensor_data)
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, qos_profile_sensor_data)
+
+        # Store latest messages
+        self.latest_lidar = None
+        self.latest_camera = None
+        self.latest_imu = None
+        self.data_lock = threading.RLock()
+
+        # Timer for processing synchronized data
+        self.process_timer = self.create_timer(0.1, self.process_synchronized_data)
+
+    def lidar_callback(self, msg):
+        with self.data_lock:
+            self.latest_lidar = msg
+
+    def camera_callback(self, msg):
+        with self.data_lock:
+            self.latest_camera = msg
+
+    def imu_callback(self, msg):
+        with self.data_lock:
+            self.latest_imu = msg
+
+    def process_synchronized_data(self):
+        with self.data_lock:
+            if self.latest_lidar and self.latest_camera and self.latest_imu:
+                # Process synchronized data
+                self.process_fusion()
+                # Clear processed data if needed
+                # self.latest_lidar = None  # Only if you want one-time processing
+
+    def process_fusion(self):
+        # Implement sensor fusion logic
+        self.get_logger().info('Processing synchronized sensor data')
+```
+
+## Performance Optimization
+
+### Message Size Optimization
+
+```python
+from sensor_msgs.msg import PointCloud2, PointField
+import numpy as np
+
+class OptimizedMessagingNode(Node):
+    def __init__(self):
+        super().__init__('optimized_messaging')
+
+        # For large data like point clouds, consider compression
+        self.pointcloud_pub = self.create_publisher(PointCloud2, 'points', 1)
+
+    def create_optimized_pointcloud(self, points):
+        """Create a compact point cloud message"""
+        # Use efficient data structures
+        msg = PointCloud2()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'sensor_frame'
+
+        # Define fields efficiently
+        msg.fields = [
+            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+        ]
+
+        msg.is_bigendian = False
+        msg.point_step = 12  # 3 floats * 4 bytes each
+        msg.row_step = msg.point_step * len(points)
+        msg.is_dense = True
+
+        # Convert to bytes efficiently
+        points_array = np.array(points, dtype=np.float32).tobytes()
+        msg.data = points_array
+
+        return msg
+```
+
+### Publisher Optimization
+
+```python
+class OptimizedPublisherNode(Node):
+    def __init__(self):
+        super().__init__('optimized_publisher')
+
+        # Use intra-process communication when possible
+        self.declare_parameter('use_intra_process', True)
+        use_intra = self.get_parameter('use_intra_process').value
+
+        # Create publisher with optimized QoS
+        qos_profile = QoSProfile(
+            depth=1,  # Minimal queue for real-time performance
+            reliability=ReliabilityPolicy.BEST_EFFORT,  # For high-frequency data
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST
+        )
+
+        self.optimized_pub = self.create_publisher(String, 'optimized_topic', qos_profile)
+
+        # Timer for high-frequency publishing
+        self.publish_timer = self.create_timer(0.01, self.optimized_publish)  # 100 Hz
+
+    def optimized_publish(self):
+        # Pre-allocate message objects to reduce garbage collection
+        if not hasattr(self, 'msg_cache'):
+            self.msg_cache = String()
+
+        # Update only the changing parts
+        self.msg_cache.data = f'Optimized message: {self.get_clock().now().nanoseconds}'
+        self.optimized_pub.publish(self.msg_cache)
+```
+
+## Message Synchronization Patterns
+
+### Time Synchronization
+
+```python
+from rclpy.time import Time
+from builtin_interfaces.msg import Time as TimeMsg
+
+class TimeSyncNode(Node):
+    def __init__(self):
+        super().__init__('time_sync_node')
+
+        # For synchronizing messages across topics
+        self.message_times = {}
+        self.message_cache = {}
+
+    def sync_callback(self, msg, topic_name):
+        current_time = self.get_clock().now()
+
+        # Store message with timestamp
+        self.message_cache[topic_name] = (msg, current_time)
+
+        # Process if we have messages from all required topics
+        if self.all_topics_received():
+            self.process_synchronized_messages()
+
+    def all_topics_received(self):
+        required_topics = ['lidar', 'camera', 'imu']
+        return all(topic in self.message_cache for topic in required_topics)
+
+    def process_synchronized_messages(self):
+        # Process messages that are time-synchronized
+        for topic, (msg, timestamp) in self.message_cache.items():
+            self.get_logger().info(f'Processing {topic} message from {timestamp}')
+
+        # Clear processed messages
+        self.message_cache.clear()
+```
+
+## Error Handling and Robustness
+
+### Message Validation
+
+```python
+class RobustMessagingNode(Node):
+    def __init__(self):
+        super().__init__('robust_messaging')
+
+        self.lidar_sub = self.create_subscription(
+            LaserScan, 'scan', self.validated_lidar_callback, 10)
+
+    def validated_lidar_callback(self, msg):
+        try:
+            # Validate message content
+            if not self.validate_laser_scan(msg):
+                self.get_logger().error('Invalid laser scan message received')
+                return
+
+            # Process valid message
+            self.process_laser_scan(msg)
+
+        except Exception as e:
+            self.get_logger().error(f'Error processing laser scan: {e}')
+
+    def validate_laser_scan(self, msg):
+        """Validate laser scan message integrity"""
+        if len(msg.ranges) == 0:
+            return False
+        if msg.angle_increment == 0:
+            return False
+        if msg.range_min > msg.range_max:
+            return False
+
+        # Check for invalid values
+        for r in msg.ranges:
+            if not (msg.range_min <= r <= msg.range_max) and not (r == float('inf')):
+                return False
+
+        return True
+
+    def process_laser_scan(self, msg):
+        """Process validated laser scan data"""
+        self.get_logger().info(f'Processed valid scan with {len(msg.ranges)} points')
+```
+
+## Physical AI Application Patterns
+
+### Sensor Data Pipeline
+
+```python
+class SensorPipelineNode(Node):
+    def __init__(self):
+        super().__init__('sensor_pipeline')
+
+        # Multiple sensor inputs
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, 10)
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.scan_callback, 10)
+
+        # Processed output
+        self.state_pub = self.create_publisher(RobotState, 'robot_state', 10)
+
+        # Processing timer
+        self.process_timer = self.create_timer(0.05, self.process_sensor_fusion)
+
+        # State variables
+        self.latest_imu = None
+        self.latest_odom = None
+        self.latest_scan = None
+
+    def imu_callback(self, msg):
+        self.latest_imu = msg
+
+    def odom_callback(self, msg):
+        self.latest_odom = msg
+
+    def scan_callback(self, msg):
+        self.latest_scan = msg
+
+    def process_sensor_fusion(self):
+        if all([self.latest_imu, self.latest_odom, self.latest_scan]):
+            # Create fused state message
+            state_msg = self.create_fused_state()
+            self.state_pub.publish(state_msg)
+
+    def create_fused_state(self):
+        # Implement sensor fusion algorithm
+        state = RobotState()  # Custom message type
+        # Combine sensor data into unified state representation
+        return state
+```
+
+### Control Command Pipeline
+
+```python
+class ControlPipelineNode(Node):
+    def __init__(self):
+        super().__init__('control_pipeline')
+
+        # State input
+        self.state_sub = self.create_subscription(
+            RobotState, 'robot_state', self.state_callback, 10)
+
+        # Command input
+        self.cmd_sub = self.create_subscription(
+            RobotCommand, 'robot_cmd', self.command_callback, 10)
+
+        # Motor command output
+        self.motor_pub = self.create_publisher(JointState, 'motor_commands', 10)
+
+        # Control timer
+        self.control_timer = self.create_timer(0.01, self.compute_control)  # 100 Hz
+
+        # State and command storage
+        self.current_state = None
+        self.current_command = None
+
+    def state_callback(self, msg):
+        self.current_state = msg
+
+    def command_callback(self, msg):
+        self.current_command = msg
+
+    def compute_control(self):
+        if self.current_state and self.current_command:
+            # Compute motor commands based on state and desired command
+            motor_cmd = self.compute_motor_commands()
+            self.motor_pub.publish(motor_cmd)
+
+    def compute_motor_commands(self):
+        # Implement control algorithm
+        cmd = JointState()
+        # Calculate appropriate motor commands
+        return cmd
+```
+
+<div className="textbook-key-concept">
+
+### Key Takeaway
+Topics and messages form the backbone of ROS 2 communication, enabling asynchronous, type-safe data exchange between nodes. Proper use of QoS policies, message optimization, and synchronization techniques is crucial for developing high-performance Physical AI systems that can handle real-time sensor data and control commands effectively.
+
+</div>
+
+<div className="textbook-exercise-box">
+
+### Try It Yourself
+1. Create a node that subscribes to sensor data and publishes processed information
+2. Implement custom message types for your specific application
+3. Experiment with different QoS settings to understand their impact on communication
+4. Build a simple sensor fusion node that combines data from multiple sources
+
+</div>
+
+## Chapter Summary
+
+Topics and messages provide the asynchronous communication infrastructure that enables distributed robotic systems. Understanding how to properly design, configure, and optimize message passing is essential for creating robust Physical AI applications. The publish-subscribe pattern allows for loose coupling between system components while QoS policies provide control over reliability, performance, and data persistence characteristics.
+
+## Exercises
+
+1. Design custom message types for a humanoid robot's joint states and sensor data
+2. Implement a message filtering node that processes laser scan data to detect obstacles
+3. Create a time synchronization system for processing multi-sensor data
+4. Build a performance-optimized publisher for high-frequency sensor data
+
+## References
+
+- ROS 2 Message Types: https://docs.ros.org/en/humble/Concepts/About-ROS-Interfaces.html
+- Quality of Service: https://docs.ros.org/en/humble/Concepts/About-Quality-of-Service-Settings.html
+- Message Generation: https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Custom-ROS2-Interfaces.html
+
+## Next Steps
+
+In the next lesson, we'll explore ROS 2 services and actions, learning about synchronous request-response communication and goal-oriented task execution patterns.
